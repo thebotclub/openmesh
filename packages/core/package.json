@@ -1,0 +1,29 @@
+{
+  "name": "@openmesh/core",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Core runtime: event bus, state store, execution engine, coordinators",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./events": "./dist/events/index.js",
+    "./observers": "./dist/observers/index.js",
+    "./operators": "./dist/operators/index.js",
+    "./coordinators": "./dist/coordinators/index.js",
+    "./state": "./dist/state/index.js",
+    "./permissions": "./dist/permissions/index.js",
+    "./providers": "./dist/providers/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}

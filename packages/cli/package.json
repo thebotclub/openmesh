@@ -1,0 +1,33 @@
+{
+  "name": "@openmesh/cli",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "CLI: mesh init, goal, observer, operator, status, approve, logs",
+  "license": "MIT",
+  "bin": {
+    "mesh": "./dist/main.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "dev": "node --import tsx src/main.ts"
+  },
+  "dependencies": {
+    "@openmesh/core": "workspace:*",
+    "@openmesh/sdk": "workspace:*",
+    "@openmesh/observer-cron": "workspace:*",
+    "@openmesh/observer-log-stream": "workspace:*",
+    "@openmesh/observer-http-health": "workspace:*",
+    "@openmesh/observer-github": "workspace:*",
+    "@openmesh/operator-code": "workspace:*",
+    "@openmesh/operator-comms": "workspace:*",
+    "@openmesh/operator-infra": "workspace:*",
+    "@openmesh/operator-data": "workspace:*",
+    "@openmesh/dashboard": "workspace:*",
+    "commander": "^13.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "tsx": "^4.19.0"
+  }
+}

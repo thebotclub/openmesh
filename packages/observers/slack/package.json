@@ -1,0 +1,19 @@
+{
+  "name": "@openmesh/observer-slack",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@openmesh/sdk": "workspace:*"
+  },
+  "devDependencies": {
+    "@openmesh/core": "workspace:*",
+    "typescript": "^5.7.0"
+  }
+}

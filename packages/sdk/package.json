@@ -1,0 +1,26 @@
+{
+  "name": "@openmesh/sdk",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Public SDK: defineObserver, defineOperator, defineGoal",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./observer": "./dist/observer.js",
+    "./operator": "./dist/operator.js",
+    "./coordinator": "./dist/coordinator.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@openmesh/core": "workspace:*",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}

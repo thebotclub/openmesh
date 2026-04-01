@@ -1,0 +1,24 @@
+{
+  "name": "@openmesh/dashboard",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Web dashboard: goals, events, approvals, execution history",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json --noEmit",
+    "dev": "node --import tsx src/main.ts"
+  },
+  "dependencies": {
+    "@openmesh/core": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "tsx": "^4.19.0"
+  }
+}
