@@ -24,6 +24,11 @@
     "@openmesh/operator-infra": "workspace:*",
     "@openmesh/operator-data": "workspace:*",
     "@openmesh/dashboard": "workspace:*",
+    "@openmesh/ai": "workspace:*",
+    "@openmesh/mcp": "workspace:*",
+    "@openmesh/channels": "workspace:*",
+    "@openmesh/telemetry": "workspace:*",
+    "@openmesh/plugins": "workspace:*",
     "commander": "^13.0.0"
   },
   "devDependencies": {

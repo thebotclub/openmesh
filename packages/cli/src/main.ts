@@ -10,6 +10,14 @@ import {
 import { existsSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
+function loadConfig(): Record<string, unknown> {
+  const configPath = resolve("mesh.config.json");
+  if (existsSync(configPath)) {
+    return JSON.parse(readFileSync(configPath, "utf-8")) as Record<string, unknown>;
+  }
+  return {};
+}
+
 const program = new Command();
 
 program
@@ -75,7 +83,16 @@ program
   .option("--log-level <level>", "Log level", "info")
   .option("--dashboard", "Start web dashboard", false)
   .option("--dashboard-port <port>", "Dashboard port", "3777")
-  .action(async (opts: { goals: string; data: string; logLevel: string; dashboard: boolean; dashboardPort: string }) => {
+  .option("--ai", "Enable AI operator and anomaly detection", false)
+  .option("--telemetry", "Enable OpenTelemetry traces and metrics", false)
+  .option("--channels", "Enable multi-channel messaging from config", false)
+  .option("--plugins <dirs...>", "Load plugins from local directories")
+  .action(async (opts: {
+    goals: string; data: string; logLevel: string;
+    dashboard: boolean; dashboardPort: string;
+    ai: boolean; telemetry: boolean; channels: boolean;
+    plugins?: string[];
+  }) => {
     const mesh = new Mesh({
       dataDir: resolve(opts.data),
       logLevel: opts.logLevel as "debug" | "info" | "warn" | "error",
@@ -91,6 +108,81 @@ program
     const operatorModules = await loadBundledOperators();
     for (const op of operatorModules) {
       mesh.addOperator(op);
+    }
+
+    // Wire AI operator if enabled
+    if (opts.ai) {
+      try {
+        const { createAIOperator } = await import("@openmesh/ai/aiOperator");
+        mesh.addOperator(createAIOperator());
+        console.log("🧠 AI operator enabled");
+      } catch {
+        console.log("AI module not available (install @openmesh/ai)");
+      }
+    }
+
+    // Wire telemetry if enabled
+    if (opts.telemetry) {
+      try {
+        const { MeshTelemetry } = await import("@openmesh/telemetry/telemetry");
+        const telemetry = new MeshTelemetry({
+          serviceName: "openmesh",
+          logLevel: opts.logLevel as "debug" | "info" | "warn" | "error",
+        });
+        console.log(`📊 Telemetry enabled (OTLP: ${process.env["OTEL_EXPORTER_OTLP_ENDPOINT"] ?? "stdout"})`);
+        // Store on mesh for later access
+        (mesh as unknown as Record<string, unknown>)["telemetry"] = telemetry;
+      } catch {
+        console.log("Telemetry module not available (install @openmesh/telemetry)");
+      }
+    }
+
+    // Wire multi-channel messaging if enabled
+    if (opts.channels) {
+      try {
+        const { ChannelRouter } = await import("@openmesh/channels/router");
+        const { createChannelObserver } = await import("@openmesh/channels/observer");
+        const { createChannelOperator } = await import("@openmesh/channels/operator");
+
+        const router = new ChannelRouter();
+        const config = loadConfig();
+        const channelConfig = (config["channels"] ?? {}) as Record<string, Record<string, unknown>>;
+
+        for (const [name, cfg] of Object.entries(channelConfig)) {
+          try {
+            const adapterMod = await import(`@openmesh/channels/adapters/${name}`);
+            const AdapterClass = adapterMod.default ?? Object.values(adapterMod)[0] as new (c: Record<string, unknown>) => { id: string; name: string; start: () => Promise<void>; send: (msg: unknown) => Promise<void>; stop: () => Promise<void> };
+            router.addChannel(new AdapterClass(cfg));
+            console.log(`📡 Channel enabled: ${name}`);
+          } catch {
+            console.log(`Channel adapter not found: ${name}`);
+          }
+        }
+
+        mesh.addObserver(createChannelObserver(router));
+        mesh.addOperator(createChannelOperator(router));
+      } catch {
+        console.log("Channels module not available (install @openmesh/channels)");
+      }
+    }
+
+    // Load plugins if specified
+    if (opts.plugins && opts.plugins.length > 0) {
+      try {
+        const { PluginRegistry } = await import("@openmesh/plugins/registry");
+        const registry = new PluginRegistry();
+
+        for (const pluginPath of opts.plugins) {
+          try {
+            await registry.loadLocal(resolve(pluginPath), mesh);
+            console.log(`🔌 Plugin loaded: ${pluginPath}`);
+          } catch (err) {
+            console.log(`Plugin failed to load: ${pluginPath} — ${(err as Error).message}`);
+          }
+        }
+      } catch {
+        console.log("Plugins module not available (install @openmesh/plugins)");
+      }
     }
 
     // Load goals from YAML directory
@@ -269,6 +361,293 @@ program
       } catch {
         console.log(line);
       }
+    }
+  });
+
+// ── mesh ai interpret ───────────────────────────────────────────────
+
+const ai = program.command("ai").description("AI-powered goal management");
+
+ai.command("interpret <text>")
+  .description("Convert natural language into a goal YAML via LLM")
+  .option("--model <model>", "LLM model to use")
+  .option("--save", "Save the generated goal to the goals directory", false)
+  .option("-g, --goals <dir>", "Goals directory", "goals")
+  .action(async (text: string, opts: { model?: string; save: boolean; goals: string }) => {
+    try {
+      const { AIEngine } = await import("@openmesh/ai/engine");
+      const { GoalInterpreter } = await import("@openmesh/ai/goalInterpreter");
+
+      const engine = new AIEngine(opts.model ? { model: opts.model } : undefined);
+      const interpreter = new GoalInterpreter(engine);
+      const result = await interpreter.interpret(text);
+
+      console.log(`\n📋 Interpreted Goal (confidence: ${(result.confidence * 100).toFixed(0)}%)`);
+      console.log(`   ${result.explanation}\n`);
+      console.log("---");
+      // Output as YAML-ish display
+      console.log(`id: ${result.goal.id}`);
+      console.log(`description: ${result.goal.description}`);
+      console.log("observe:");
+      for (const o of result.goal.observe) {
+        console.log(`  - type: "${o.type}"`);
+      }
+      console.log("then:");
+      for (const step of result.goal.then) {
+        console.log(`  - label: ${step.label}`);
+        console.log(`    operator: ${step.operator}`);
+        console.log(`    task: "${step.task}"`);
+      }
+      console.log("---");
+
+      if (opts.save) {
+        const goalsDir = resolve(opts.goals);
+        if (!existsSync(goalsDir)) mkdirSync(goalsDir, { recursive: true });
+        const filePath = join(goalsDir, `${result.goal.id}.yaml`);
+        // Build a minimal YAML output
+        let yaml = `id: ${result.goal.id}\n`;
+        yaml += `description: ${result.goal.description}\n\n`;
+        yaml += `observe:\n`;
+        for (const o of result.goal.observe) {
+          yaml += `  - type: "${o.type}"\n`;
+        }
+        yaml += `\nthen:\n`;
+        for (const step of result.goal.then) {
+          yaml += `  - label: ${step.label}\n`;
+          yaml += `    operator: ${step.operator}\n`;
+          yaml += `    task: "${step.task}"\n`;
+        }
+        writeFileSync(filePath, yaml);
+        console.log(`\n✅ Goal saved to ${filePath}`);
+      }
+    } catch (err) {
+      console.error("AI module not available. Install @openmesh/ai and configure LLM endpoint.");
+      console.error((err as Error).message);
+      process.exit(1);
+    }
+  });
+
+ai.command("analyze")
+  .description("Use AI to detect anomalies in recent events")
+  .option("-d, --data <dir>", "Data directory", ".openmesh")
+  .option("-w, --window <count>", "Number of recent events to analyze", "50")
+  .action(async (opts: { data: string; window: string }) => {
+    try {
+      const { AIEngine } = await import("@openmesh/ai/engine");
+      const { AnomalyDetector } = await import("@openmesh/ai/anomalyDetector");
+
+      const engine = new AIEngine();
+      const detector = new AnomalyDetector(engine, (a) => console.log(`⚠️  ${a.type}: ${a.description}`), { windowSizeMs: Number(opts.window) * 60_000 });
+
+      const walPath = join(resolve(opts.data), "events.wal.jsonl");
+      if (!existsSync(walPath)) {
+        console.log("No event log found.");
+        return;
+      }
+      const content = readFileSync(walPath, "utf-8").trim();
+      if (!content) {
+        console.log("Event log is empty.");
+        return;
+      }
+
+      const lines = content.split("\n").slice(-Number(opts.window));
+      for (const line of lines) {
+        try {
+          const evt = JSON.parse(line);
+          detector.observe(evt);
+        } catch { /* skip */ }
+      }
+
+      console.log("🔍 Analyzing events for anomalies...\n");
+      const anomalies = await detector.analyze();
+      if (anomalies.length === 0) {
+        console.log("✅ No anomalies detected.");
+      } else {
+        for (const a of anomalies) {
+          console.log(`⚠️  [${a.severity}] ${a.type}: ${a.description}`);
+          if (a.suggestedAction) console.log(`   → ${a.suggestedAction}`);
+        }
+      }
+    } catch (err) {
+      console.error("AI module not available. Install @openmesh/ai.");
+      console.error((err as Error).message);
+      process.exit(1);
+    }
+  });
+
+// ── mesh mcp ────────────────────────────────────────────────────────
+
+const mcp = program.command("mcp").description("Model Context Protocol integration");
+
+mcp.command("serve")
+  .description("Expose mesh operators as MCP tools via stdio")
+  .option("-d, --data <dir>", "Data directory", ".openmesh")
+  .option("-g, --goals <dir>", "Goals directory", "goals")
+  .action(async (opts: { data: string; goals: string }) => {
+    try {
+      const { MeshMCPServer } = await import("@openmesh/mcp/server");
+      const mesh = new Mesh({ dataDir: resolve(opts.data) });
+
+      const operatorModules = await loadBundledOperators();
+      for (const op of operatorModules) mesh.addOperator(op);
+
+      const goalsDir = resolve(opts.goals);
+      if (existsSync(goalsDir)) {
+        const goals = loadGoalsFromDir(goalsDir);
+        for (const goal of goals) mesh.addGoal(goal);
+      }
+
+      await mesh.start();
+
+      const server = new MeshMCPServer(mesh);
+      await server.start();
+      // Server runs until stdin closes
+    } catch (err) {
+      console.error("MCP module not available. Install @openmesh/mcp.");
+      console.error((err as Error).message);
+      process.exit(1);
+    }
+  });
+
+mcp.command("connect <command...>")
+  .description("Connect an external MCP server and import its tools as operators")
+  .option("-d, --data <dir>", "Data directory", ".openmesh")
+  .action(async (command: string[], _opts: { data: string }) => {
+    try {
+      const { MeshMCPClient } = await import("@openmesh/mcp/client");
+
+      const [cmd, ...args] = command;
+      console.log(`Connecting to MCP server: ${cmd} ${args.join(" ")}`);
+
+      const client = new MeshMCPClient({
+        name: cmd!,
+        command: cmd!,
+        args,
+      });
+      await client.connect();
+      const operators = await client.toOperators();
+
+      console.log(`\n✅ Imported ${operators.length} MCP tool(s) as operators:`);
+      for (const op of operators) {
+        console.log(`  • ${op.id}: ${op.description}`);
+      }
+
+      await client.disconnect();
+    } catch (err) {
+      console.error("MCP module not available. Install @openmesh/mcp.");
+      console.error((err as Error).message);
+      process.exit(1);
+    }
+  });
+
+// ── mesh channels ───────────────────────────────────────────────────
+
+const channels = program.command("channels").description("Multi-channel messaging");
+
+channels.command("list")
+  .description("List configured channels")
+  .action(() => {
+    const config = loadConfig();
+    const channelConfig = (config["channels"] ?? {}) as Record<string, unknown>;
+    const channelNames = Object.keys(channelConfig);
+
+    if (channelNames.length === 0) {
+      console.log("No channels configured. Add channels to mesh.config.json:");
+      console.log('  "channels": { "slack": { "botToken": "..." }, "webhook": {} }');
+      return;
+    }
+
+    console.log("Configured channels:");
+    for (const name of channelNames) {
+      console.log(`  • ${name}`);
+    }
+  });
+
+channels.command("test <channel> <message>")
+  .description("Send a test message to a specific channel")
+  .action(async (channel: string, message: string) => {
+    try {
+      const { ChannelRouter } = await import("@openmesh/channels/router");
+
+      const router = new ChannelRouter();
+      const config = loadConfig();
+      const channelConfig = (config["channels"] ?? {}) as Record<string, Record<string, unknown>>;
+
+      if (!channelConfig[channel]) {
+        console.error(`Channel "${channel}" not configured.`);
+        process.exit(1);
+      }
+
+      // Load the appropriate adapter
+      const adapterMod = await import(`@openmesh/channels/adapters/${channel}`);
+      const AdapterClass = adapterMod.default ?? Object.values(adapterMod)[0] as new (config: Record<string, unknown>) => { id: string; name: string; start: () => Promise<void>; send: (msg: unknown) => Promise<void>; stop: () => Promise<void> };
+      const adapter = new AdapterClass(channelConfig[channel]!);
+      router.addChannel(adapter);
+
+      await router.startAll();
+      await router.send(channel, {
+        channel,
+        sender: "cli-test",
+        text: message,
+      });
+      console.log(`✅ Message sent to ${channel}`);
+      await router.stopAll();
+    } catch (err) {
+      console.error(`Failed to send message: ${(err as Error).message}`);
+      process.exit(1);
+    }
+  });
+
+// ── mesh plugin ─────────────────────────────────────────────────────
+
+const plugin = program.command("plugin").description("Plugin management");
+
+plugin.command("load <path>")
+  .description("Load and inspect a local plugin")
+  .action(async (path: string) => {
+    try {
+      const { PluginLoader } = await import("@openmesh/plugins/loader");
+
+      const loader = new PluginLoader();
+      const pluginInfo = await loader.loadLocal(resolve(path));
+
+      console.log(`\n📦 Plugin: ${pluginInfo.manifest.name} v${pluginInfo.manifest.version}`);
+      console.log(`   ${pluginInfo.manifest.description}`);
+      if (pluginInfo.observers.length > 0) {
+        console.log(`   Observers: ${pluginInfo.observers.map((o: { id: string }) => o.id).join(", ")}`);
+      }
+      if (pluginInfo.operators.length > 0) {
+        console.log(`   Operators: ${pluginInfo.operators.map((o: { id: string }) => o.id).join(", ")}`);
+      }
+      if (pluginInfo.goals.length > 0) {
+        console.log(`   Goals: ${pluginInfo.goals.map((g: { id: string }) => g.id).join(", ")}`);
+      }
+    } catch (err) {
+      console.error(`Failed to load plugin: ${(err as Error).message}`);
+      process.exit(1);
+    }
+  });
+
+plugin.command("install <name>")
+  .description("Install a plugin from npm and register it")
+  .action(async (name: string) => {
+    try {
+      const { PluginLoader } = await import("@openmesh/plugins/loader");
+
+      console.log(`Installing ${name}...`);
+      const loader = new PluginLoader();
+      const pluginInfo = await loader.loadNpm(name);
+
+      console.log(`\n✅ Installed: ${pluginInfo.manifest.name} v${pluginInfo.manifest.version}`);
+      if (pluginInfo.observers.length > 0) {
+        console.log(`   Observers: ${pluginInfo.observers.map((o: { id: string }) => o.id).join(", ")}`);
+      }
+      if (pluginInfo.operators.length > 0) {
+        console.log(`   Operators: ${pluginInfo.operators.map((o: { id: string }) => o.id).join(", ")}`);
+      }
+    } catch (err) {
+      console.error(`Failed to install plugin: ${(err as Error).message}`);
+      process.exit(1);
     }
   });
 

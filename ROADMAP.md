@@ -31,38 +31,67 @@
 - [ ] Coverage badge in README
 - [ ] Automated npm publish on release tags
 
-### 3.2 AI/LLM Integration
-- [ ] LLM-powered goal interpretation — natural language → action plans
-- [ ] Intelligent operator selection — AI picks which operator(s) to run
-- [ ] Anomaly detection on observation streams
-- [ ] Auto-remediation suggestions from incident patterns
-- [ ] Conversational goal refinement via CLI
+### 3.2 AI/LLM Integration (`@openmesh/ai`) — ✅ SCAFFOLDED
+- [x] AI engine via OpenAI SDK → LiteLLM proxy (100+ model providers)
+- [x] Natural language → Goal YAML interpreter (`mesh ai interpret`)
+- [x] Intelligent operator planner — AI selects operators, generates plans
+- [x] Anomaly detector on observation streams (`mesh ai analyze`)
+- [x] AI reasoning operator (`ai` operator in goals)
+- [ ] Conversational goal refinement via CLI (interactive)
+- [ ] RAG context from state/event history
+- [ ] Fine-tuned prompt templates per domain
 
-### 3.3 Docker & Deployment
+### 3.3 Model Context Protocol (`@openmesh/mcp`) — ✅ SCAFFOLDED
+- [x] MCP server — expose mesh operators as MCP tools (`mesh mcp serve`)
+- [x] MCP client — import external MCP server tools as operators (`mesh mcp connect`)
+- [ ] Remote MCP server transport (SSE / HTTP)
+- [ ] MCP resource exposure (state, events, goals)
+- [ ] MCP prompt templates for goal creation
+
+### 3.4 Multi-Channel Messaging (`@openmesh/channels`) — ✅ SCAFFOLDED
+- [x] Channel router hub with adapter pattern
+- [x] Webhook adapter (HTTP inbound/outbound)
+- [x] Slack adapter (Web API + polling)
+- [x] Discord adapter (Gateway WebSocket + REST)
+- [x] Telegram adapter (Bot API long polling)
+- [x] Channel observer (emits events into mesh)
+- [x] Channel operator (sends messages from goals)
+- [ ] Matrix bridge adapter (unifies all messaging)
+- [ ] Email (SMTP/IMAP) adapter
+- [ ] PagerDuty / OpsGenie adapter
+- [ ] Interactive message actions (buttons, approvals)
+
+### 3.5 Observability (`@openmesh/telemetry`) — ✅ SCAFFOLDED
+- [x] Structured logging via Pino
+- [x] OpenTelemetry traces (event → goal → operator spans)
+- [x] OpenTelemetry metrics (event count, goal executions, operator duration)
+- [x] Combined telemetry setup utility
+- [ ] Prometheus /metrics endpoint
+- [ ] Dashboard metrics panels
+- [ ] Grafana dashboard templates
+
+### 3.6 Plugin System (`@openmesh/plugins`) — ✅ SCAFFOLDED
+- [x] Dynamic ESM plugin loading from local dirs or npm
+- [x] Plugin manifest format (`openmesh-plugin.json`)
+- [x] `mesh plugin load <path>` CLI command
+- [x] `mesh plugin install <name>` CLI command
+- [x] Plugin registry with mesh wiring
+- [ ] Plugin dependency resolution
+- [ ] Plugin marketplace / discovery
+
+### 3.7 Docker & Deployment
 - [ ] Dockerfile + docker-compose for self-hosted deployment
 - [ ] `npx @openmesh/cli` global install path
 - [ ] Helm chart for Kubernetes
 - [ ] One-click deploy templates (Railway, Fly.io, Render)
 
-### 3.4 Authentication & Secrets
+### 3.8 Authentication & Secrets
 - [ ] Dashboard auth (API keys / session tokens)
 - [ ] Secrets manager integration (env vars, Vault, 1Password)
 - [ ] Scoped operator permissions beyond the current allowlist
 - [ ] Audit log for operator actions
 
-### 3.5 Plugin System
-- [ ] Dynamic observer/operator loading from npm or local paths
-- [ ] Plugin manifest format (`openmesh-plugin.json`)
-- [ ] `mesh plugin install <name>` CLI command
-- [ ] Plugin registry / discovery
-
-### 3.6 Observability
-- [ ] Structured logging (pino)
-- [ ] OpenTelemetry / Prometheus metrics export
-- [ ] Dashboard metrics panels (event throughput, goal success rate, operator latency)
-- [ ] Alerting rules and notification channels
-
-### 3.7 Documentation Site
+### 3.9 Documentation Site
 - [ ] Host on open-mesh.ai
 - [ ] Getting started guide
 - [ ] API reference (SDK, CLI)

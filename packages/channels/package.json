@@ -1,0 +1,53 @@
+{
+  "name": "@openmesh/channels",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Multi-channel messaging bridge — Matrix, Slack, Discord, Telegram, webhooks via matrix-bot-sdk and lightweight adapters",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./router": {
+      "types": "./dist/router.d.ts",
+      "import": "./dist/router.js"
+    },
+    "./observer": {
+      "types": "./dist/observer.d.ts",
+      "import": "./dist/observer.js"
+    },
+    "./operator": {
+      "types": "./dist/operator.d.ts",
+      "import": "./dist/operator.js"
+    },
+    "./adapters/webhook": {
+      "types": "./dist/adapters/webhook.d.ts",
+      "import": "./dist/adapters/webhook.js"
+    },
+    "./adapters/slack": {
+      "types": "./dist/adapters/slack.d.ts",
+      "import": "./dist/adapters/slack.js"
+    },
+    "./adapters/discord": {
+      "types": "./dist/adapters/discord.d.ts",
+      "import": "./dist/adapters/discord.js"
+    },
+    "./adapters/telegram": {
+      "types": "./dist/adapters/telegram.d.ts",
+      "import": "./dist/adapters/telegram.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@openmesh/core": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "@types/node": "^22.0.0"
+  }
+}

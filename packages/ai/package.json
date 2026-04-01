@@ -1,0 +1,46 @@
+{
+  "name": "@openmesh/ai",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "AI engine for OpenMesh — LLM-powered goal interpretation, operator selection, and autonomous remediation via LiteLLM-compatible providers",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./engine": {
+      "types": "./dist/engine.d.ts",
+      "import": "./dist/engine.js"
+    },
+    "./goalInterpreter": {
+      "types": "./dist/goalInterpreter.d.ts",
+      "import": "./dist/goalInterpreter.js"
+    },
+    "./planner": {
+      "types": "./dist/planner.d.ts",
+      "import": "./dist/planner.js"
+    },
+    "./anomalyDetector": {
+      "types": "./dist/anomalyDetector.d.ts",
+      "import": "./dist/anomalyDetector.js"
+    },
+    "./aiOperator": {
+      "types": "./dist/aiOperator.d.ts",
+      "import": "./dist/aiOperator.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@openmesh/core": "workspace:*",
+    "openai": "^4.85.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "@types/node": "^22.0.0"
+  }
+}

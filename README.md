@@ -7,17 +7,35 @@ AI-native operations platform. Declare **what** your infrastructure should do �
 ## Architecture
 
 ```
-Observers  →  EventBus (WAL)  →  GoalEngine  →  Operators
-  cron          durable JSONL       YAML goals      code
-  http-health   glob matching       conditions      comms
-  github        dedup               templates       infra
-  slack                             escalation      data
+                    ┌────────────────────────────────────────────┐
+                    │              OpenMesh Runtime               │
+                    │                                            │
+  Observers ──────→ EventBus (WAL) ──→ GoalEngine ──→ Operators  │
+    cron             durable JSONL       YAML goals     code     │
+    http-health      glob matching       conditions     comms    │
+    github           dedup               templates      infra    │
+    slack            anomaly detect      escalation     data     │
+    log-stream       ↑                   AI planning    AI 🧠   │
+    channels ←──────←┘                                  channels │
+                    │                                            │
+                    │  ┌─── Integrations ─────────────────────┐  │
+                    │  │ @openmesh/ai        → LiteLLM proxy  │  │
+                    │  │ @openmesh/mcp       → MCP servers    │  │
+                    │  │ @openmesh/channels  → Slack/Discord/  │  │
+                    │  │                       Telegram/Webhook│  │
+                    │  │ @openmesh/telemetry → OTel + Pino    │  │
+                    │  │ @openmesh/plugins   → npm/local      │  │
+                    │  └──────────────────────────────────────┘  │
+                    └────────────────────────────────────────────┘
 ```
 
 **Observers** watch your world and emit events.
 **Goals** (YAML) declare which events matter and what steps to take.
 **Operators** execute the steps — investigate code, send notifications, manage infra, query data.
 The **EventBus** ties it all together with durable persistence and glob-based routing.
+The **AI engine** understands natural language, interprets goals, detects anomalies, and reasons about problems.
+**MCP** exposes operators as tools for any MCP client (Claude, Cursor, etc.) and imports external tools.
+**Channels** bridge messages across Slack, Discord, Telegram, and webhooks.
 
 ## Quick Start
 
@@ -33,6 +51,9 @@ node packages/cli/dist/main.js init
 
 # Run the mesh (cron observer fires immediately)
 node packages/cli/dist/main.js run
+
+# Run with AI, channels, and telemetry
+node packages/cli/dist/main.js run --ai --channels --telemetry
 
 # Inject a test event manually
 node packages/cli/dist/main.js inject cron.tick
@@ -102,8 +123,13 @@ escalate:
 packages/
   core/           # EventBus, GoalEngine, StateStore, Mesh runtime
   sdk/            # defineObserver(), defineOperator(), defineGoal()
-  cli/            # mesh init|run|inject|status|logs
+  cli/            # mesh init|run|inject|status|logs|ai|mcp|channels|plugin
   dashboard/      # Web UI with live SSE updates
+  ai/             # LLM engine, goal interpreter, planner, anomaly detection
+  mcp/            # MCP server (expose operators) + client (import tools)
+  channels/       # Multi-channel messaging: Slack, Discord, Telegram, webhook
+  telemetry/      # OpenTelemetry traces/metrics + Pino structured logging
+  plugins/        # Dynamic plugin loading from npm or local directories
   observers/
     cron/          # Interval-based scheduler
     http-health/   # HTTP endpoint polling
@@ -159,6 +185,114 @@ The dashboard shows:
 - **Recent Events** — live event stream from the WAL
 - **Execution Log** — state checkpoints (matches, step results, completions)
 - **SSE** — automatic live updates via Server-Sent Events
+
+### AI-Powered Goals (`@openmesh/ai`)
+
+Uses the OpenAI SDK pointed at [LiteLLM](https://github.com/BerriAI/litellm) (or any OpenAI-compatible endpoint: Ollama, vLLM, OpenRouter, direct OpenAI/Anthropic).
+
+```bash
+# Set your LLM endpoint (LiteLLM proxy, Ollama, OpenAI, etc.)
+export OPENMESH_LLM_BASE_URL=http://localhost:4000/v1   # LiteLLM
+export OPENMESH_LLM_API_KEY=sk-...
+export OPENMESH_LLM_MODEL=gpt-4o
+
+# Convert natural language to a goal
+mesh ai interpret "When a GitHub push fails CI, analyze the logs and notify #engineering on Slack"
+
+# Save the interpreted goal directly
+mesh ai interpret "Monitor HTTP health every 5 minutes and restart if down" --save
+
+# Analyze events for anomalies
+mesh ai analyze --window 100
+
+# Use the AI operator in goal YAML
+```
+
+```yaml
+then:
+  - label: diagnose
+    operator: ai
+    task: "Analyze this failure and suggest root causes: {{event.payload.error}}"
+```
+
+### Model Context Protocol (`@openmesh/mcp`)
+
+Expose the entire mesh as an MCP server for Claude, Cursor, or any MCP client:
+
+```bash
+# Serve mesh operators as MCP tools
+mesh mcp serve
+
+# Connect an external MCP server's tools as mesh operators
+mesh mcp connect npx -y @modelcontextprotocol/server-filesystem /tmp
+```
+
+### Multi-Channel Messaging (`@openmesh/channels`)
+
+Configure channels in `mesh.config.json`:
+
+```json
+{
+  "channels": {
+    "slack": { "botToken": "xoxb-...", "defaultChannel": "#ops" },
+    "discord": { "botToken": "...", "guildId": "...", "channelId": "..." },
+    "telegram": { "botToken": "...", "chatId": "..." },
+    "webhook": { "port": 3780, "endpoints": [] }
+  }
+}
+```
+
+```bash
+# Run with channels enabled
+mesh run --channels
+
+# Test a channel
+mesh channels test slack "Hello from OpenMesh!"
+
+# Use in goals — send alerts anywhere
+```
+
+```yaml
+then:
+  - label: alert
+    operator: channels
+    task: "Send to slack: Build {{event.payload.repo}} failed — {{steps.investigate.summary}}"
+```
+
+### Plugins
+
+```bash
+# Load a local plugin directory
+mesh plugin load ./my-plugin
+
+# Install from npm
+mesh plugin install openmesh-plugin-kubernetes
+
+# Run with plugins
+mesh run --plugins ./my-plugin ./another-plugin
+```
+
+### Telemetry
+
+```bash
+# Enable OpenTelemetry traces + metrics
+mesh run --telemetry
+
+# Configure OTLP exporter
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+```
+
+### Open Source Leverage
+
+OpenMesh doesn't reinvent the wheel. We integrate with best-in-class open source:
+
+| Capability | Integration | Why |
+|-----------|------------|-----|
+| LLM routing | [LiteLLM](https://github.com/BerriAI/litellm) via OpenAI SDK | 100+ providers, cost tracking, load balancing, caching |
+| Tool interop | [MCP SDK](https://github.com/modelcontextprotocol/sdk) | Standard protocol for sharing tools across AI ecosystem |
+| Observability | [OpenTelemetry](https://opentelemetry.io/) + [Pino](https://getpino.io/) | Industry-standard traces, metrics, structured logs |
+| Schema validation | [Zod](https://zod.dev/) | TypeScript-first runtime validation |
+| Messaging APIs | Direct HTTP (Slack, Discord, Telegram) | Lightweight, no heavy SDK dependencies |
 
 ### Persistent State
 
