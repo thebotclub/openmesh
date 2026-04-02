@@ -27,9 +27,9 @@
 ## 🔲 Phase 3 — Production Readiness
 
 ### 3.1 CI/CD Pipeline
-- [ ] GitHub Actions: test, build, lint on PR/push
+- [x] GitHub Actions: test, build, type-check on PR/push
 - [ ] Coverage badge in README
-- [ ] Automated npm publish on release tags
+- [x] Automated npm publish on release tags (`v*` tag → pnpm publish)
 
 ### 3.2 AI/LLM Integration (`@openmesh/ai`) — ✅ SCAFFOLDED
 - [x] AI engine via OpenAI SDK → LiteLLM proxy (100+ model providers)
@@ -37,14 +37,14 @@
 - [x] Intelligent operator planner — AI selects operators, generates plans
 - [x] Anomaly detector on observation streams (`mesh ai analyze`)
 - [x] AI reasoning operator (`ai` operator in goals)
-- [ ] Conversational goal refinement via CLI (interactive)
-- [ ] RAG context from state/event history
+- [x] Conversational goal refinement via CLI (`mesh ai refine` — multi-turn interactive sessions)
+- [x] RAG context from state/event history (`RAGContextBuilder` with events, checkpoints, goal states)
 - [ ] Fine-tuned prompt templates per domain
 
 ### 3.3 Model Context Protocol (`@openmesh/mcp`) — ✅ SCAFFOLDED
 - [x] MCP server — expose mesh operators as MCP tools (`mesh mcp serve`)
 - [x] MCP client — import external MCP server tools as operators (`mesh mcp connect`)
-- [ ] Remote MCP server transport (SSE / HTTP)
+- [x] Remote MCP server transport (SSE + HTTP POST with auth & CORS)
 - [ ] MCP resource exposure (state, events, goals)
 - [ ] MCP prompt templates for goal creation
 
@@ -66,7 +66,7 @@
 - [x] OpenTelemetry traces (event → goal → operator spans)
 - [x] OpenTelemetry metrics (event count, goal executions, operator duration)
 - [x] Combined telemetry setup utility
-- [ ] Prometheus /metrics endpoint
+- [x] Prometheus /metrics endpoint (exposition format, MetricsRegistry, HTTP server)
 - [ ] Dashboard metrics panels
 - [ ] Grafana dashboard templates
 
@@ -80,13 +80,13 @@
 - [ ] Plugin marketplace / discovery
 
 ### 3.7 Docker & Deployment
-- [ ] Dockerfile + docker-compose for self-hosted deployment
+- [x] Dockerfile + docker-compose for self-hosted deployment (mesh + LiteLLM + OTel)
 - [ ] `npx @openmesh/cli` global install path
 - [ ] Helm chart for Kubernetes
 - [ ] One-click deploy templates (Railway, Fly.io, Render)
 
 ### 3.8 Authentication & Secrets
-- [ ] Dashboard auth (API keys / session tokens)
+- [x] Dashboard auth (API key authentication with timing-safe comparison)
 - [ ] Secrets manager integration (env vars, Vault, 1Password)
 - [ ] Scoped operator permissions beyond the current allowlist
 - [ ] Audit log for operator actions
