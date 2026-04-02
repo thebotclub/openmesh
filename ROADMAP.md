@@ -32,7 +32,7 @@
 - [x] Automated npm publish on release tags (`v*` tag → pnpm publish)
 
 ### 3.2 AI/LLM Integration (`@openmesh/ai`)
-- [x] AI engine via OpenAI SDK → LiteLLM proxy (100+ model providers)
+- [x] AI engine via OpenAI SDK → Portkey AI Gateway (100+ model providers)
 - [x] Natural language → Goal YAML interpreter (`mesh ai interpret`)
 - [x] Intelligent operator planner — AI selects operators, generates plans
 - [x] Anomaly detector on observation streams (`mesh ai analyze`)
@@ -80,7 +80,7 @@
 - [x] Plugin marketplace / discovery (npm registry search with caching)
 
 ### 3.7 Docker & Deployment
-- [x] Dockerfile + docker-compose for self-hosted deployment (mesh + LiteLLM + OTel)
+- [x] Dockerfile + docker-compose for self-hosted deployment (mesh + Portkey + OTel)
 - [x] `npx @openmesh/cli` global install path
 - [x] Helm chart for Kubernetes (full chart with security contexts, optional sidecars)
 - [x] One-click deploy templates (Railway, Fly.io, Render)

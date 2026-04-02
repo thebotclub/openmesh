@@ -2,14 +2,14 @@
  * AIEngine — unified LLM client for OpenMesh.
  *
  * Points the OpenAI SDK at any OpenAI-compatible endpoint:
- *   - LiteLLM proxy (100+ providers): http://localhost:4000
+ *   - Portkey AI Gateway (100+ providers): https://api.portkey.ai/v1
  *   - Ollama local models: http://localhost:11434/v1
  *   - OpenAI direct: https://api.openai.com/v1
  *   - OpenRouter: https://openrouter.ai/api/v1
  *   - vLLM: http://localhost:8000/v1
  *
  * This pattern is borrowed from OpenClaw's provider abstraction and
- * LiteLLM's "one API, any model" philosophy.
+ * Portkey's "unified API, any model" philosophy.
  */
 
 import OpenAI from "openai";
@@ -18,7 +18,7 @@ import { CostTracker } from "./costTracker.js";
 import { FailoverManager, type FailoverConfig } from "./failover.js";
 
 export interface AIEngineConfig {
-  /** Base URL for OpenAI-compatible API (default: LiteLLM at localhost:4000) */
+  /** Base URL for OpenAI-compatible API (default: Portkey AI Gateway) */
   baseUrl?: string;
   /** API key (reads OPENMESH_LLM_API_KEY or OPENAI_API_KEY from env) */
   apiKey?: string;
@@ -35,8 +35,8 @@ export interface AIEngineConfig {
 }
 
 const DEFAULT_CONFIG: Required<Omit<AIEngineConfig, 'compaction' | 'failover'>> = {
-  baseUrl: "http://localhost:4000/v1", // LiteLLM default
-  apiKey: "not-needed", // LiteLLM local doesn't require one
+  baseUrl: "https://api.portkey.ai/v1", // Portkey AI Gateway
+  apiKey: "not-needed", // set PORTKEY_API_KEY or OPENAI_API_KEY
   model: "gpt-4o-mini", // sensible default; overridden per-deployment
   temperature: 0.2,
   maxTokens: 4096,
@@ -53,6 +53,7 @@ export class AIEngine {
     const apiKey =
       config?.apiKey ??
       process.env["OPENMESH_LLM_API_KEY"] ??
+      process.env["PORTKEY_API_KEY"] ??
       process.env["OPENAI_API_KEY"] ??
       DEFAULT_CONFIG.apiKey;
 

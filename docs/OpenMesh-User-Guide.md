@@ -67,7 +67,7 @@ cd openmesh
 docker compose up
 ```
 
-This starts three services: **mesh** (main runtime), **LiteLLM** (LLM proxy with 100+ providers), and **OpenTelemetry collector**.
+This starts two services: **mesh** (main runtime) and **OpenTelemetry collector**. Configure your LLM provider via `PORTKEY_API_KEY` or `OPENAI_API_KEY` environment variables.
 
 ---
 
@@ -372,13 +372,13 @@ escalate:
 
 ## 6. AI Engine Configuration
 
-OpenMesh uses the OpenAI SDK pointed at any OpenAI-compatible endpoint. This works out of the box with **LiteLLM** (100+ providers), **Ollama**, **vLLM**, **OpenAI**, **Anthropic**, **OpenRouter**, and more.
+OpenMesh uses the OpenAI SDK pointed at any OpenAI-compatible endpoint. This works out of the box with **Portkey AI Gateway** (100+ providers), **Ollama**, **vLLM**, **OpenAI**, **Anthropic**, **OpenRouter**, and more.
 
 ### Environment Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `OPENMESH_LLM_BASE_URL` | `http://localhost:4000/v1` | LLM API endpoint |
+| `OPENMESH_LLM_BASE_URL` | `https://api.portkey.ai/v1` | LLM API endpoint |
 | `OPENMESH_LLM_API_KEY` | `not-needed` | API key |
 | `OPENMESH_LLM_MODEL` | `gpt-4o-mini` | Default model |
 | `OPENAI_API_KEY` | — | Fallback for API key |
@@ -389,7 +389,7 @@ OpenMesh uses the OpenAI SDK pointed at any OpenAI-compatible endpoint. This wor
 import { AIEngine } from '@openmesh/ai';
 
 const engine = new AIEngine({
-  baseUrl: 'http://localhost:4000/v1',
+  baseUrl: 'https://api.portkey.ai/v1',
   apiKey: 'sk-...',
   model: 'gpt-4o',
   temperature: 0.2,    // 0-1
@@ -754,7 +754,7 @@ mesh run --plugins ./my-plugin ./another-plugin
 | Service | Port | Description |
 |---------|------|-------------|
 | `mesh` | 3000 (dashboard), 4000 (MCP) | OpenMesh runtime |
-| `litellm` | 4001 | LLM proxy (100+ model providers) |
+| Portkey AI Gateway | cloud-hosted | LLM proxy (100+ model providers) |
 | `otel-collector` | 4318 | OpenTelemetry collector |
 
 ### Environment Variables

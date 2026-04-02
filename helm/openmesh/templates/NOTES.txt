@@ -27,9 +27,9 @@
   Endpoint: http://localhost:{{ .Values.mcp.port }}
 {{- end }}
 
-{{- if .Values.litellm.enabled }}
+{{- if .Values.portkey.enabled }}
 
-🤖 LiteLLM proxy running as sidecar on port {{ .Values.litellm.port }}
+🤖 Portkey AI Gateway configured (cloud-hosted at https://api.portkey.ai/v1)
 {{- end }}
 
 {{- if .Values.otelCollector.enabled }}

@@ -60,13 +60,13 @@ Create the name of the service account to use.
 {{- end }}
 
 {{/*
-LiteLLM URL — use user-provided llm.baseUrl or default to the sidecar service.
+LLM URL — use user-provided llm.baseUrl or default to Portkey AI Gateway.
 */}}
-{{- define "openmesh.litellmUrl" -}}
+{{- define "openmesh.llmUrl" -}}
 {{- if .Values.llm.baseUrl }}
 {{- .Values.llm.baseUrl }}
-{{- else if .Values.litellm.enabled }}
-{{- printf "http://localhost:%d/v1" (int .Values.litellm.port) }}
+{{- else if .Values.portkey.enabled }}
+{{- .Values.portkey.baseUrl | default "https://api.portkey.ai/v1" }}
 {{- else }}
 {{- print "https://api.openai.com/v1" }}
 {{- end }}

@@ -56,8 +56,8 @@ spec:
               value: "production"
             - name: LOG_LEVEL
               value: {{ .Values.mesh.logLevel | quote }}
-            - name: LITELLM_URL
-              value: {{ include "openmesh.litellmUrl" . | quote }}
+            - name: OPENMESH_LLM_BASE_URL
+              value: {{ include "openmesh.llmUrl" . | quote }}
             - name: LLM_MODEL
               value: {{ .Values.llm.model | quote }}
             - name: MESH_GOALS_DIR
@@ -75,6 +75,14 @@ spec:
             {{- if .Values.otelCollector.enabled }}
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
               value: {{ include "openmesh.otelEndpoint" . | quote }}
+            {{- end }}
+            # ── Portkey API key ──
+            {{- if .Values.portkey.apiKeySecret }}
+            - name: PORTKEY_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.portkey.apiKeySecret }}
+                  key: {{ .Values.portkey.apiKeySecretKey }}
             {{- end }}
             # ── LLM API key ──
             {{- if .Values.llm.apiKeySecret }}
@@ -154,50 +162,6 @@ spec:
               drop:
                 - ALL
 
-        # ── LiteLLM sidecar ───────────────────────────────────────
-        {{- if .Values.litellm.enabled }}
-        - name: litellm
-          image: "{{ .Values.litellm.image.repository }}:{{ .Values.litellm.image.tag }}"
-          imagePullPolicy: {{ .Values.litellm.image.pullPolicy }}
-          args: ["--config", "/etc/litellm/config.yaml"]
-          ports:
-            - name: litellm
-              containerPort: {{ .Values.litellm.port }}
-              protocol: TCP
-          env:
-            {{- if .Values.llm.apiKeySecret }}
-            - name: OPENAI_API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.llm.apiKeySecret }}
-                  key: {{ .Values.llm.apiKeySecretKey }}
-            {{- end }}
-          volumeMounts:
-            - name: litellm-config
-              mountPath: /etc/litellm
-              readOnly: true
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: litellm
-            initialDelaySeconds: 10
-            periodSeconds: 15
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: litellm
-            initialDelaySeconds: 5
-            periodSeconds: 10
-          resources:
-            {{- toYaml .Values.litellm.resources | nindent 12 }}
-          securityContext:
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
-            capabilities:
-              drop:
-                - ALL
-        {{- end }}
-
         # ── OpenTelemetry collector sidecar ───────────────────────
         {{- if .Values.otelCollector.enabled }}
         - name: otel-collector
@@ -227,8 +191,3 @@ spec:
         - name: config
           configMap:
             name: {{ include "openmesh.fullname" . }}-config
-        {{- if .Values.litellm.enabled }}
-        - name: litellm-config
-          configMap:
-            name: {{ include "openmesh.fullname" . }}-litellm
-        {{- end }}

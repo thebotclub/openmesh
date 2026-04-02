@@ -24,7 +24,7 @@ AI-native operations platform. Declare **what** your infrastructure should do �
     channels ←──────←┘                                  channels │
                     │                                            │
                     │  ┌─── Integrations ─────────────────────┐  │
-                    │  │ @openmesh/ai        → LiteLLM proxy  │  │
+                    │  │ @openmesh/ai        → Portkey gateway │  │
                     │  │ @openmesh/mcp       → MCP servers    │  │
                     │  │ @openmesh/channels  → Slack/Discord/  │  │
                     │  │                       Telegram/Webhook│  │
@@ -195,11 +195,11 @@ The dashboard shows:
 
 ### AI-Powered Goals (`@openmesh/ai`)
 
-Uses the OpenAI SDK pointed at [LiteLLM](https://github.com/BerriAI/litellm) (or any OpenAI-compatible endpoint: Ollama, vLLM, OpenRouter, direct OpenAI/Anthropic).
+Uses the OpenAI SDK pointed at [Portkey AI Gateway](https://portkey.ai) (or any OpenAI-compatible endpoint: Ollama, vLLM, OpenRouter, direct OpenAI/Anthropic).
 
 ```bash
-# Set your LLM endpoint (LiteLLM proxy, Ollama, OpenAI, etc.)
-export OPENMESH_LLM_BASE_URL=http://localhost:4000/v1   # LiteLLM
+# Set your LLM endpoint (Portkey gateway, Ollama, OpenAI, etc.)
+export OPENMESH_LLM_BASE_URL=https://api.portkey.ai/v1  # Portkey
 export OPENMESH_LLM_API_KEY=sk-...
 export OPENMESH_LLM_MODEL=gpt-4o
 
@@ -308,7 +308,7 @@ Scoped RBAC with 3 built-in roles (`admin`, `operator`, `viewer`) and glob-patte
 ### Deploy
 
 One-click deploy templates included:
-- **Docker**: `docker compose up` (mesh + LiteLLM + OpenTelemetry)
+- **Docker**: `docker compose up` (mesh + OpenTelemetry)
 - **Kubernetes**: Full Helm chart at `helm/openmesh/`
 - **Railway / Fly.io / Render**: Config files in repo root
 
@@ -318,7 +318,7 @@ OpenMesh doesn't reinvent the wheel. We integrate with best-in-class open source
 
 | Capability | Integration | Why |
 |-----------|------------|-----|
-| LLM routing | [LiteLLM](https://github.com/BerriAI/litellm) via OpenAI SDK | 100+ providers, cost tracking, load balancing, caching |
+| LLM routing | [Portkey AI Gateway](https://portkey.ai) via OpenAI SDK | 100+ providers, cost tracking, load balancing, caching, guardrails |
 | Tool interop | [MCP SDK](https://github.com/modelcontextprotocol/sdk) | Standard protocol for sharing tools across AI ecosystem |
 | Observability | [OpenTelemetry](https://opentelemetry.io/) + [Pino](https://getpino.io/) | Industry-standard traces, metrics, structured logs |
 | Schema validation | [Zod](https://zod.dev/) | TypeScript-first runtime validation |

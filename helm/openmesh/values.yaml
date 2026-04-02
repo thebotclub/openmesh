@@ -67,23 +67,13 @@ prometheus:
     enabled: false
     interval: 30s
 
-# LiteLLM sidecar
-litellm:
+# Portkey AI Gateway (cloud-hosted, no sidecar needed)
+portkey:
   enabled: true
-  image:
-    repository: ghcr.io/berriai/litellm
-    tag: "main-latest"
-    pullPolicy: IfNotPresent
-  port: 4000
-  resources:
-    limits:
-      memory: 512Mi
-      cpu: 500m
-    requests:
-      memory: 256Mi
-      cpu: 100m
-  # Custom litellm config (rendered as config.yaml)
-  config: {}
+  baseUrl: "https://api.portkey.ai/v1"
+  # API key stored in a Kubernetes Secret
+  apiKeySecret: ""
+  apiKeySecretKey: "portkey-api-key"
 
 # OpenTelemetry collector sidecar
 otelCollector:

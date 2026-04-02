@@ -63,6 +63,7 @@ describe("AIEngine", () => {
   beforeEach(() => {
     mockCreate.mockReset();
     delete process.env["OPENMESH_LLM_API_KEY"];
+    delete process.env["PORTKEY_API_KEY"];
     delete process.env["OPENAI_API_KEY"];
     delete process.env["OPENMESH_LLM_BASE_URL"];
     delete process.env["OPENMESH_LLM_MODEL"];
@@ -70,7 +71,7 @@ describe("AIEngine", () => {
 
   it("uses default config when none provided", () => {
     const engine = new AIEngine();
-    expect(engine.config.baseUrl).toBe("http://localhost:4000/v1");
+    expect(engine.config.baseUrl).toBe("https://api.portkey.ai/v1");
     expect(engine.config.apiKey).toBe("not-needed");
     expect(engine.config.model).toBe("gpt-4o-mini");
     expect(engine.config.temperature).toBe(0.2);

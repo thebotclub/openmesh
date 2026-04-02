@@ -14,25 +14,3 @@ data:
   #       url: https://example.com
   #       interval: 30s
   .gitkeep: ""
----
-{{- if .Values.litellm.enabled }}
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: {{ include "openmesh.fullname" . }}-litellm
-  labels:
-    {{- include "openmesh.labels" . | nindent 4 }}
-data:
-  config.yaml: |
-    {{- if .Values.litellm.config }}
-    {{- toYaml .Values.litellm.config | nindent 4 }}
-    {{- else }}
-    model_list:
-      - model_name: gpt-4o-mini
-        litellm_params:
-          model: openai/gpt-4o-mini
-      - model_name: gpt-4o
-        litellm_params:
-          model: openai/gpt-4o
-    {{- end }}
-{{- end }}
