@@ -17,6 +17,9 @@
  */
 
 export { AIEngine, type AIEngineConfig } from "./engine.js";
+export { CostTracker, type TokenUsage, type ModelUsage, type CostSummary } from './costTracker.js';
+export { FailoverManager, AllProfilesExhaustedError, type FailoverConfig, type LLMProfile, type FailoverResult } from './failover.js';
+export { ContextManager, type CompactionConfig } from "./compaction.js";
 export { GoalInterpreter, type InterpretedGoal } from "./goalInterpreter.js";
 export { OperatorPlanner, type ExecutionPlan, type PlannedStep } from "./planner.js";
 export { AnomalyDetector, type Anomaly } from "./anomalyDetector.js";

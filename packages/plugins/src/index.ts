@@ -20,6 +20,13 @@
  */
 
 export { PluginLoader, type PluginManifest, type LoadedPlugin } from "./loader.js";
+export {
+  HookManager,
+  type HookPoint,
+  type HookContext,
+  type HookHandler,
+  type HookRegistration,
+} from "./hooks.js";
 export { PluginRegistry } from "./registry.js";
 export {
   DependencyResolver,

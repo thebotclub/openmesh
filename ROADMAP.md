@@ -98,12 +98,31 @@
 - [ ] Goal template library with examples
 - [ ] Contributing guide
 
-## 🔲 Phase 4 — Scale & Ecosystem
+## ✅ Phase 4 — Production Hardening (Complete)
+
+Patterns borrowed from Claude Code and OpenClaw reference architectures.
+
+### 4.1 Resilience
+- [x] Circuit breaker for operator calls (sliding-window failure tracking, 3-state machine: closed/open/half_open)
+- [x] LLM failover with multi-provider rotation (priority-sorted profiles, exponential backoff, retryable error detection)
+- [x] Sandbox execution for infra commands (env allowlist isolation, tmpdir working dirs, dangerous command blocking)
+
+### 4.2 Observability & Cost
+- [x] Streaming goal execution events (pub-sub ExecutionEmitter — goal:matched, step:started/skipped/completed, goal:completed/failed)
+- [x] Per-model cost tracking with token accumulation (GPT-4o/mini/turbo, Claude 3.5/4 pricing, cached token handling)
+- [x] Context window management with auto-compaction (token estimation, 80% threshold, summarize-and-compact)
+
+### 4.3 Extensibility
+- [x] Plugin lifecycle hooks (before/after goal & operator execution, on:plugin:loaded, on:error)
+- [x] Hook priority ordering and cancellation for before: hooks
+- [x] Error-isolated hook execution with collected error reporting
+- [x] Plugin manifest hooks field for declarative hook registration
+
+## 🔲 Phase 5 — Scale & Ecosystem
 
 - [ ] Multi-node mesh coordination (distributed EventBus)
 - [ ] Goal dependencies and DAG execution
 - [ ] Webhook-based observer gateway
 - [ ] Visual goal editor (drag-and-drop)
 - [ ] Community plugin marketplace
-- [ ] Role-based access control (RBAC)
 - [ ] SaaS hosted offering

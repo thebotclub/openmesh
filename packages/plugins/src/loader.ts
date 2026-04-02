@@ -18,6 +18,11 @@ export interface PluginManifest {
   permissions?: string[];
   config?: Record<string, unknown>;
   dependencies?: Record<string, string>; // name → semver range
+  hooks?: Array<{
+    hook: string;
+    handler: string; // exported function name in the entry module
+    priority?: number;
+  }>;
 }
 
 export interface LoadedPlugin {
@@ -25,6 +30,11 @@ export interface LoadedPlugin {
   observers: Observer[];
   operators: Operator[];
   goals: Goal[];
+  hookHandlers?: Array<{
+    hook: string;
+    handler: (...args: any[]) => any;
+    priority?: number;
+  }>;
 }
 
 interface PluginExports {
@@ -114,11 +124,26 @@ export class PluginLoader {
   }
 
   private extractPlugin(mod: PluginExports, manifest: PluginManifest): LoadedPlugin {
+    const hookHandlers: NonNullable<LoadedPlugin["hookHandlers"]> = [];
+    if (manifest.hooks) {
+      for (const hookDef of manifest.hooks) {
+        const fn = (mod as Record<string, unknown>)[hookDef.handler];
+        if (typeof fn === "function") {
+          hookHandlers.push({
+            hook: hookDef.hook,
+            handler: fn as (...args: any[]) => any,
+            priority: hookDef.priority,
+          });
+        }
+      }
+    }
+
     const plugin: LoadedPlugin = {
       manifest,
       observers: [],
       operators: [],
       goals: [],
+      ...(hookHandlers.length > 0 ? { hookHandlers } : {}),
     };
 
     // Handle default export

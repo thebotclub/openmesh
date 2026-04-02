@@ -47,7 +47,16 @@ export type { Permission, Role, Principal, RBACConfig } from "./rbac.js";
 export { AuditLog } from "./audit.js";
 export type { AuditEntry, AuditConfig, AuditQueryFilter } from "./audit.js";
 
+export { Sandbox } from "./sandbox.js";
+export type { SandboxConfig, SandboxResult } from "./sandbox.js";
+
 export { loadGoalFromYaml, loadGoalsFromDir, parseSimpleYaml } from "./goals/loader.js";
+
+export { CircuitBreaker, CircuitOpenError } from "./circuitBreaker.js";
+export type { CircuitBreakerConfig, CircuitState } from "./circuitBreaker.js";
+
+export { ExecutionEmitter } from "./runtime/execution.js";
+export type { ExecutionEvent, ExecutionEventType, ExecutionListener } from "./runtime/execution.js";
 
 export {
   SecretsManager,

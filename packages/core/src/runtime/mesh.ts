@@ -7,6 +7,9 @@ import { StateStore } from "../state/index.js";
 import { SecretsManager, type SecretsManagerConfig } from "../secrets/index.js";
 import { RBACManager, type RBACConfig } from "../rbac.js";
 import { AuditLog, type AuditConfig } from "../audit.js";
+import { CircuitBreaker, CircuitOpenError, type CircuitBreakerConfig } from "../circuitBreaker.js";
+import { ExecutionEmitter } from "./execution.js";
+import { Sandbox, type SandboxConfig } from "../sandbox.js";
 
 // ── Mesh Configuration ──────────────────────────────────────────────
 
@@ -25,6 +28,10 @@ export interface MeshConfig {
   rbac?: RBACConfig;
   /** Audit log configuration */
   audit?: AuditConfig;
+  /** Circuit breaker configuration for operators */
+  circuitBreaker?: CircuitBreakerConfig;
+  /** Sandbox configuration for command execution */
+  sandbox?: SandboxConfig;
 }
 
 export type MeshLogger = (level: string, component: string, message: string, ...args: unknown[]) => void;
@@ -46,10 +53,13 @@ export class Mesh {
   readonly secrets: SecretsManager;
   readonly rbac: RBACManager;
   readonly audit: AuditLog;
+  readonly execution: ExecutionEmitter;
+  readonly sandbox: Sandbox;
   readonly config: Required<MeshConfig>;
   private running = false;
   private shutdownController = new AbortController();
   private log: MeshLogger;
+  private circuits = new Map<string, CircuitBreaker>();
 
   constructor(config?: MeshConfig) {
     const dataDir = config?.dataDir ?? ".openmesh";
@@ -61,6 +71,8 @@ export class Mesh {
       secrets: config?.secrets ?? {},
       rbac: config?.rbac ?? {},
       audit: config?.audit ?? {},
+      circuitBreaker: config?.circuitBreaker ?? {},
+      sandbox: config?.sandbox ?? {},
     };
 
     const wal: WAL = dataDir ? new FileWAL(`${dataDir}/events.wal.jsonl`) : new MemoryWAL();
@@ -72,6 +84,8 @@ export class Mesh {
     this.secrets = new SecretsManager(config?.secrets);
     this.rbac = new RBACManager(config?.rbac);
     this.audit = new AuditLog(config?.audit);
+    this.sandbox = new Sandbox(config?.sandbox);
+    this.execution = new ExecutionEmitter();
 
     this.log = (_level, component, message, ...args) => {
       const ts = new Date().toISOString().slice(11, 23);
@@ -180,6 +194,12 @@ export class Mesh {
       this.log("info", "goal", `"${goal.id}" matched event ${event.type}`);
       this.goals.setState(goal.id, { phase: "matched", event, matchedAt: new Date().toISOString() });
       this.state.append({ kind: "goal_matched", goalId: goal.id, event });
+      this.execution.emit({
+        type: 'goal:matched',
+        timestamp: new Date().toISOString(),
+        goalId: goal.id,
+        event,
+      });
 
       await this.executeGoal(goal, event);
     }
@@ -194,6 +214,15 @@ export class Mesh {
       // Evaluate "when" condition
       if (step.when && !this.evaluateCondition(step.when, stepResults)) {
         this.log("debug", "goal", `  Step "${step.label}" skipped (condition: ${step.when})`);
+        this.execution.emit({
+          type: 'step:skipped',
+          timestamp: new Date().toISOString(),
+          goalId: goal.id,
+          stepLabel: step.label,
+          stepIndex: stepIdx,
+          totalSteps: goal.then.length,
+          reason: `Condition not met: ${step.when}`,
+        });
         continue;
       }
 
@@ -206,6 +235,14 @@ export class Mesh {
 
       this.log("info", "goal", `  Executing step "${step.label}" → operator "${step.operator}"`);
       this.state.append({ kind: "step_started", goalId: goal.id, stepLabel: step.label });
+      this.execution.emit({
+        type: 'step:started',
+        timestamp: new Date().toISOString(),
+        goalId: goal.id,
+        stepLabel: step.label,
+        stepIndex: stepIdx,
+        totalSteps: goal.then.length,
+      });
 
       // RBAC check: is the system principal allowed to execute this operator?
       const principalId = (event.payload?.principalId as string) ?? "system";
@@ -225,6 +262,15 @@ export class Mesh {
         };
         stepResults.set(step.label, denied);
         this.state.append({ kind: "step_completed", goalId: goal.id, stepLabel: step.label, result: denied });
+        this.execution.emit({
+          type: 'step:completed',
+          timestamp: new Date().toISOString(),
+          goalId: goal.id,
+          stepLabel: step.label,
+          stepIndex: stepIdx,
+          totalSteps: goal.then.length,
+          result: denied,
+        });
         continue;
       }
 
@@ -271,6 +317,15 @@ export class Mesh {
         stepLabel: step.label,
         result,
       });
+      this.execution.emit({
+        type: 'step:completed',
+        timestamp: new Date().toISOString(),
+        goalId: goal.id,
+        stepLabel: step.label,
+        stepIndex: stepIdx,
+        totalSteps: goal.then.length,
+        result,
+      });
 
       this.log("info", "goal", `  Step "${step.label}" → ${result.status}: ${result.summary}`);
 
@@ -290,6 +345,12 @@ export class Mesh {
     this.state.append({
       kind: "goal_completed",
       goalId: goal.id,
+    });
+    this.execution.emit({
+      type: 'goal:completed',
+      timestamp: new Date().toISOString(),
+      goalId: goal.id,
+      event,
     });
     this.log("info", "goal", `Goal "${goal.id}" completed.`);
   }
@@ -390,7 +451,17 @@ export class Mesh {
     const multiplier = retry?.backoffMultiplier ?? 2.0;
     const maxDelay = retry?.maxDelayMs ?? 60_000;
 
-    let lastResult = await this.operators.execute(operatorId, ctx);
+    const cb = this.getCircuit(operatorId);
+    let lastResult: OperatorResult;
+    try {
+      lastResult = await cb.call(() => this.operators.execute(operatorId, ctx));
+    } catch (err) {
+      if (err instanceof CircuitOpenError) {
+        lastResult = { status: "failure", summary: err.message };
+      } else {
+        throw err;
+      }
+    }
     if (lastResult.status === "success" || maxRetries <= 0) {
       return lastResult;
     }
@@ -402,10 +473,27 @@ export class Mesh {
 
       if (ctx.signal.aborted) return lastResult;
 
-      lastResult = await this.operators.execute(operatorId, ctx);
+      try {
+        lastResult = await cb.call(() => this.operators.execute(operatorId, ctx));
+      } catch (err) {
+        if (err instanceof CircuitOpenError) {
+          lastResult = { status: "failure", summary: err.message };
+        } else {
+          throw err;
+        }
+      }
       if (lastResult.status === "success") break;
     }
 
     return lastResult;
+  }
+
+  private getCircuit(operatorId: string): CircuitBreaker {
+    let cb = this.circuits.get(operatorId);
+    if (!cb) {
+      cb = new CircuitBreaker({ name: `operator:${operatorId}`, ...this.config.circuitBreaker });
+      this.circuits.set(operatorId, cb);
+    }
+    return cb;
   }
 }

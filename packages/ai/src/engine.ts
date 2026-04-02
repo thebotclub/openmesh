@@ -13,6 +13,9 @@
  */
 
 import OpenAI from "openai";
+import { ContextManager, type CompactionConfig } from "./compaction.js";
+import { CostTracker } from "./costTracker.js";
+import { FailoverManager, type FailoverConfig } from "./failover.js";
 
 export interface AIEngineConfig {
   /** Base URL for OpenAI-compatible API (default: LiteLLM at localhost:4000) */
@@ -25,9 +28,13 @@ export interface AIEngineConfig {
   temperature?: number;
   /** Maximum tokens per response */
   maxTokens?: number;
+  /** Context compaction settings */
+  compaction?: CompactionConfig;
+  /** Failover profiles for multi-provider resilience */
+  failover?: FailoverConfig;
 }
 
-const DEFAULT_CONFIG: Required<AIEngineConfig> = {
+const DEFAULT_CONFIG: Required<Omit<AIEngineConfig, 'compaction' | 'failover'>> = {
   baseUrl: "http://localhost:4000/v1", // LiteLLM default
   apiKey: "not-needed", // LiteLLM local doesn't require one
   model: "gpt-4o-mini", // sensible default; overridden per-deployment
@@ -37,7 +44,10 @@ const DEFAULT_CONFIG: Required<AIEngineConfig> = {
 
 export class AIEngine {
   readonly client: OpenAI;
-  readonly config: Required<AIEngineConfig>;
+  readonly config: Required<Omit<AIEngineConfig, 'compaction' | 'failover'>>;
+  readonly context: ContextManager;
+  readonly costs: CostTracker;
+  readonly failover?: FailoverManager;
 
   constructor(config?: AIEngineConfig) {
     const apiKey =
@@ -63,6 +73,13 @@ export class AIEngine {
       apiKey: this.config.apiKey,
       baseURL: this.config.baseUrl,
     });
+
+    this.context = new ContextManager(config?.compaction);
+    this.costs = new CostTracker();
+
+    if (config?.failover) {
+      this.failover = new FailoverManager(config.failover);
+    }
   }
 
   /**
@@ -79,13 +96,47 @@ export class AIEngine {
       responseFormat?: OpenAI.ChatCompletionCreateParams["response_format"];
     },
   ): Promise<OpenAI.ChatCompletion> {
-    return this.client.chat.completions.create({
+    // Auto-compact if context window is getting full
+    let msgs = messages;
+    if (this.context.shouldCompact(msgs)) {
+      msgs = await this.context.compact(
+        msgs,
+        (text) => this.prompt(
+          'You are a conversation summarizer. Summarize the following conversation transcript concisely, preserving key facts, decisions, and context needed for continuation.',
+          text,
+          { model: options?.model, temperature: 0.1 },
+        ),
+      );
+    }
+
+    if (this.failover) {
+      const { result } = await this.failover.call(async (profile) => {
+        const client = new OpenAI({ apiKey: profile.apiKey, baseURL: profile.baseUrl });
+        return client.chat.completions.create({
+          model: profile.model,
+          messages: msgs,
+          temperature: options?.temperature ?? this.config.temperature,
+          max_tokens: options?.maxTokens ?? this.config.maxTokens,
+          ...(options?.responseFormat ? { response_format: options.responseFormat } : {}),
+        });
+      });
+      if (result.usage) {
+        this.costs.record(result.model ?? this.config.model, result.usage);
+      }
+      return result;
+    }
+
+    const completion = await this.client.chat.completions.create({
       model: options?.model ?? this.config.model,
-      messages,
+      messages: msgs,
       temperature: options?.temperature ?? this.config.temperature,
       max_tokens: options?.maxTokens ?? this.config.maxTokens,
       ...(options?.responseFormat ? { response_format: options.responseFormat } : {}),
     });
+    if (completion.usage) {
+      this.costs.record(completion.model ?? options?.model ?? this.config.model, completion.usage);
+    }
+    return completion;
   }
 
   /**
