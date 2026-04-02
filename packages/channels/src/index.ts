@@ -14,10 +14,24 @@
  * by defining a minimal interface and letting adapter packages do the heavy lifting.
  */
 
-export { ChannelRouter, type Channel, type ChannelMessage, type ChannelConfig } from "./router.js";
+export {
+  ChannelRouter,
+  type Channel,
+  type ChannelMessage,
+  type ChannelConfig,
+  type MessageAction,
+  type InteractiveMessage,
+  type ActionResponse,
+  type ApprovalRequest,
+  type ApprovalResult,
+} from "./router.js";
+export { ActionManager } from "./actions.js";
 export { WebhookChannel } from "./adapters/webhook.js";
 export { SlackChannel, type SlackChannelConfig } from "./adapters/slack.js";
 export { DiscordChannel, type DiscordChannelConfig } from "./adapters/discord.js";
 export { TelegramChannel, type TelegramChannelConfig } from "./adapters/telegram.js";
+export { MatrixChannel, type MatrixChannelConfig } from "./adapters/matrix.js";
+export { EmailChannel, type EmailChannelConfig } from "./adapters/email.js";
+export { PagerDutyChannel, type PagerDutyChannelConfig } from "./adapters/pagerduty.js";
 export { ChannelObserver } from "./observer.js";
 export { ChannelOperator } from "./operator.js";

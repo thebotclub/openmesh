@@ -30,6 +30,55 @@ export interface ChannelMessage {
   metadata?: Record<string, unknown>;
 }
 
+// ── Interactive message types ────────────────────────────────────────
+
+/** An interactive action attached to a message */
+export interface MessageAction {
+  type: "button" | "select" | "approval";
+  id: string;
+  label: string;
+  style?: "primary" | "danger" | "default";
+  value?: string;
+  options?: Array<{ label: string; value: string }>;
+}
+
+/** A message with interactive actions */
+export interface InteractiveMessage extends ChannelMessage {
+  actions?: MessageAction[];
+  callbackId?: string;
+}
+
+/** Payload delivered when a user clicks a button or selects an option */
+export interface ActionResponse {
+  callbackId: string;
+  actionId: string;
+  value: string;
+  userId: string;
+  channelId: string;
+  timestamp: string;
+}
+
+/** Approval request — a special case of interactive message */
+export interface ApprovalRequest {
+  id: string;
+  title: string;
+  description: string;
+  requestedBy: string;
+  channel: string;
+  actions: MessageAction[];
+  timeout?: number;
+  metadata?: Record<string, unknown>;
+}
+
+/** Result of an approval request */
+export interface ApprovalResult {
+  requestId: string;
+  approved: boolean;
+  respondedBy: string;
+  timestamp: string;
+  metadata?: Record<string, unknown>;
+}
+
 /** Configuration for a channel */
 export interface ChannelConfig {
   /** Channel adapter ID */
@@ -70,6 +119,7 @@ export class ChannelRouter {
   private channels = new Map<string, Channel>();
   private configs = new Map<string, ChannelConfig>();
   private bus?: EventBus;
+  private _actionManager?: import("./actions.js").ActionManager;
 
   /** Register a channel adapter */
   addChannel(channel: Channel, config?: Partial<ChannelConfig>): this {
@@ -149,6 +199,27 @@ export class ChannelRouter {
     for (const channel of this.channels.values()) {
       await channel.stop();
     }
+  }
+
+  /** Send an interactive message to a channel */
+  async sendInteractive(message: Omit<InteractiveMessage, "id" | "timestamp">): Promise<void> {
+    const channel = this.channels.get(message.channel);
+    if (!channel) throw new Error(`Unknown channel: ${message.channel}`);
+
+    await channel.send({
+      ...message,
+      id: randomUUID(),
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  /** Get (or lazily create) the ActionManager for this router */
+  async getActionManager(): Promise<import("./actions.js").ActionManager> {
+    if (!this._actionManager) {
+      const { ActionManager } = await import("./actions.js");
+      this._actionManager = new ActionManager(this);
+    }
+    return this._actionManager;
   }
 
   /** List registered channels */

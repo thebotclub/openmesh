@@ -1,0 +1,139 @@
+# Default values for openmesh
+replicaCount: 1
+
+image:
+  repository: ghcr.io/thebotclub/openmesh
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+nameOverride: ""
+fullnameOverride: ""
+
+mesh:
+  # Enable features
+  ai: true
+  channels: false
+  telemetry: true
+  dashboard: true
+  dashboardPort: 3000
+  # Goals directory (mounted via PVC or configmap)
+  goalsDir: /app/goals
+  dataDir: /app/.openmesh
+  logLevel: info
+
+# LLM configuration
+llm:
+  baseUrl: ""
+  model: "gpt-4o-mini"
+  # Set via secret
+  apiKeySecret: ""
+  apiKeySecretKey: "api-key"
+
+# Dashboard auth
+dashboard:
+  enabled: true
+  port: 3000
+  # API keys for dashboard auth (set via secret)
+  apiKeySecret: ""
+  apiKeySecretKey: "dashboard-api-key"
+
+# Channels configuration
+channels:
+  slack:
+    enabled: false
+    webhookUrlSecret: ""
+    webhookUrlSecretKey: "webhook-url"
+    defaultChannel: "#ops"
+  discord:
+    enabled: false
+    webhookUrlSecret: ""
+    webhookUrlSecretKey: "webhook-url"
+  telegram:
+    enabled: false
+    botTokenSecret: ""
+    botTokenSecretKey: "bot-token"
+    chatId: ""
+
+# MCP server
+mcp:
+  enabled: true
+  port: 4000
+
+# Prometheus metrics
+prometheus:
+  enabled: true
+  port: 9090
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+
+# LiteLLM sidecar
+litellm:
+  enabled: true
+  image:
+    repository: ghcr.io/berriai/litellm
+    tag: "main-latest"
+    pullPolicy: IfNotPresent
+  port: 4000
+  resources:
+    limits:
+      memory: 512Mi
+      cpu: 500m
+    requests:
+      memory: 256Mi
+      cpu: 100m
+  # Custom litellm config (rendered as config.yaml)
+  config: {}
+
+# OpenTelemetry collector sidecar
+otelCollector:
+  enabled: false
+  image:
+    repository: otel/opentelemetry-collector-contrib
+    tag: "0.102.0"
+  port: 4318
+  resources:
+    limits:
+      memory: 256Mi
+      cpu: 250m
+    requests:
+      memory: 128Mi
+      cpu: 50m
+
+service:
+  type: ClusterIP
+  port: 3000
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: openmesh.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+resources:
+  limits:
+    memory: 512Mi
+    cpu: 500m
+  requests:
+    memory: 256Mi
+    cpu: 100m
+
+persistence:
+  enabled: true
+  storageClass: ""
+  size: 1Gi
+  accessMode: ReadWriteOnce
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}

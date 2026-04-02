@@ -41,4 +41,26 @@ export type { ProviderConfig } from "./providers/index.js";
 export { Mesh } from "./runtime/mesh.js";
 export type { MeshConfig, MeshLogger } from "./runtime/mesh.js";
 
+export { RBACManager, BUILTIN_ROLES } from "./rbac.js";
+export type { Permission, Role, Principal, RBACConfig } from "./rbac.js";
+
+export { AuditLog } from "./audit.js";
+export type { AuditEntry, AuditConfig, AuditQueryFilter } from "./audit.js";
+
 export { loadGoalFromYaml, loadGoalsFromDir, parseSimpleYaml } from "./goals/loader.js";
+
+export {
+  SecretsManager,
+  EnvSecretBackend,
+  FileSecretBackend,
+  VaultSecretBackend,
+  AwsSecretsBackend,
+  OnePasswordBackend,
+} from "./secrets/index.js";
+export type {
+  SecretBackend,
+  SecretsManagerConfig,
+  VaultConfig,
+  AwsSecretsConfig,
+  OnePasswordConfig,
+} from "./secrets/index.js";

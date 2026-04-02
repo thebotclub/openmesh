@@ -13,6 +13,7 @@
 
 import type { ObservationEvent } from "@openmesh/core";
 import { AIEngine } from "./engine.js";
+import { PromptTemplateRegistry } from "./promptTemplates.js";
 
 export interface Anomaly {
   type: "frequency_spike" | "novel_pattern" | "correlation" | "drift" | "cascade";
@@ -29,31 +30,7 @@ interface WindowEntry {
   source: string;
 }
 
-const DETECTOR_SYSTEM = `You are the OpenMesh Anomaly Detector. Analyze the recent event window
-and identify any concerning patterns.
 
-Look for:
-1. FREQUENCY SPIKES: unusual burst of errors or specific event types
-2. NOVEL PATTERNS: event types or combinations not seen in the baseline
-3. CORRELATIONS: suspicious A→B patterns (e.g., deploy followed by errors)
-4. DRIFT: gradual changes in event frequency or type distribution
-5. CASCADE: failures spreading across multiple systems
-
-Respond with JSON:
-{
-  "anomalies": [
-    {
-      "type": "frequency_spike|novel_pattern|correlation|drift|cascade",
-      "severity": "low|medium|high|critical",
-      "description": "what's happening",
-      "relatedEvents": ["event.type.1", "event.type.2"],
-      "suggestedAction": "what to do about it"
-    }
-  ],
-  "summary": "overall assessment"
-}
-
-If nothing unusual, return { "anomalies": [], "summary": "normal" }.`;
 
 export class AnomalyDetector {
   private window: WindowEntry[] = [];
@@ -61,6 +38,8 @@ export class AnomalyDetector {
   private analysisIntervalMs: number;
   private baseline: Map<string, number> = new Map();
   private analysisTimer?: ReturnType<typeof setInterval>;
+
+  private registry: PromptTemplateRegistry;
 
   constructor(
     private ai: AIEngine,
@@ -70,10 +49,12 @@ export class AnomalyDetector {
       windowSizeMs?: number;
       /** How often to run analysis (default: 60 seconds) */
       analysisIntervalMs?: number;
+      registry?: PromptTemplateRegistry;
     },
   ) {
     this.windowSizeMs = options?.windowSizeMs ?? 5 * 60 * 1000;
     this.analysisIntervalMs = options?.analysisIntervalMs ?? 60 * 1000;
+    this.registry = options?.registry ?? new PromptTemplateRegistry();
   }
 
   /** Feed an event into the detector */
@@ -144,10 +125,15 @@ ${this.window
   .map((e) => `  ${new Date(e.timestamp).toISOString()} ${e.type} [${e.source}]`)
   .join("\n")}`;
 
+    // Auto-detect domain from the event types in the window
+    const domainHint = this.window.map((e) => e.type).join(" ");
+    const domain = this.registry.detectDomain(domainHint);
+    const template = this.registry.getWithFallback(domain, "analyze");
+
     const result = await this.ai.promptJSON<{
       anomalies: Anomaly[];
       summary: string;
-    }>(DETECTOR_SYSTEM, prompt);
+    }>(template.systemPrompt, prompt, { temperature: template.temperature });
 
     const now = new Date().toISOString();
     for (const anomaly of result.anomalies) {

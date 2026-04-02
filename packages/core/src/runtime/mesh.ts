@@ -4,6 +4,9 @@ import { ObserverRegistry, type Observer } from "../observers/index.js";
 import { OperatorRegistry, type Operator, type OperatorContext, type OperatorResult } from "../operators/index.js";
 import { GoalEngine, type Goal, type RetryPolicy } from "../coordinators/index.js";
 import { StateStore } from "../state/index.js";
+import { SecretsManager, type SecretsManagerConfig } from "../secrets/index.js";
+import { RBACManager, type RBACConfig } from "../rbac.js";
+import { AuditLog, type AuditConfig } from "../audit.js";
 
 // ── Mesh Configuration ──────────────────────────────────────────────
 
@@ -16,6 +19,12 @@ export interface MeshConfig {
   logLevel?: "debug" | "info" | "warn" | "error";
   /** Handler for human approval requests */
   approvalHandler?: (description: string, goalId: string, stepLabel: string) => Promise<boolean>;
+  /** Secrets manager configuration */
+  secrets?: SecretsManagerConfig;
+  /** RBAC configuration */
+  rbac?: RBACConfig;
+  /** Audit log configuration */
+  audit?: AuditConfig;
 }
 
 export type MeshLogger = (level: string, component: string, message: string, ...args: unknown[]) => void;
@@ -34,6 +43,9 @@ export class Mesh {
   readonly operators: OperatorRegistry;
   readonly goals: GoalEngine;
   readonly state: StateStore;
+  readonly secrets: SecretsManager;
+  readonly rbac: RBACManager;
+  readonly audit: AuditLog;
   readonly config: Required<MeshConfig>;
   private running = false;
   private shutdownController = new AbortController();
@@ -46,6 +58,9 @@ export class Mesh {
       defaultStepTimeoutMs: config?.defaultStepTimeoutMs ?? 300_000,
       logLevel: config?.logLevel ?? "info",
       approvalHandler: config?.approvalHandler ?? (async () => true),
+      secrets: config?.secrets ?? {},
+      rbac: config?.rbac ?? {},
+      audit: config?.audit ?? {},
     };
 
     const wal: WAL = dataDir ? new FileWAL(`${dataDir}/events.wal.jsonl`) : new MemoryWAL();
@@ -54,6 +69,9 @@ export class Mesh {
     this.operators = new OperatorRegistry();
     this.goals = new GoalEngine();
     this.state = new StateStore(dataDir ? `${dataDir}/state.jsonl` : undefined);
+    this.secrets = new SecretsManager(config?.secrets);
+    this.rbac = new RBACManager(config?.rbac);
+    this.audit = new AuditLog(config?.audit);
 
     this.log = (_level, component, message, ...args) => {
       const ts = new Date().toISOString().slice(11, 23);
@@ -106,13 +124,31 @@ export class Mesh {
     this.log("info", "mesh", "Shutting down...");
     this.shutdownController.abort();
     await this.observers.stopAll();
+    this.audit.flush();
     this.bus.clear();
     this.running = false;
     this.log("info", "mesh", "Mesh stopped.");
   }
 
   /** Manually inject an event (for testing or external triggers) */
-  async inject(event: ObservationEvent): Promise<void> {
+  async inject(event: ObservationEvent, principalId = "system"): Promise<void> {
+    if (!this.rbac.check(principalId, "event:inject", "inject")) {
+      this.audit.log({
+        principalId,
+        action: "event.inject",
+        resource: `event:${event.type}`,
+        allowed: false,
+        result: "denied",
+      });
+      throw new Error(`RBAC denied: principal "${principalId}" cannot inject events`);
+    }
+    this.audit.log({
+      principalId,
+      action: "event.inject",
+      resource: `event:${event.type}`,
+      allowed: true,
+      result: "success",
+    });
     await this.bus.emit(event);
   }
 
@@ -171,6 +207,27 @@ export class Mesh {
       this.log("info", "goal", `  Executing step "${step.label}" → operator "${step.operator}"`);
       this.state.append({ kind: "step_started", goalId: goal.id, stepLabel: step.label });
 
+      // RBAC check: is the system principal allowed to execute this operator?
+      const principalId = (event.payload?.principalId as string) ?? "system";
+      if (!this.rbac.check(principalId, `operator:${step.operator}`, "execute")) {
+        this.log("warn", "rbac", `  Denied: "${principalId}" cannot execute operator "${step.operator}"`);
+        this.audit.log({
+          principalId,
+          action: "operator.execute",
+          resource: `operator:${step.operator}`,
+          allowed: false,
+          result: "denied",
+          details: { goalId: goal.id, stepLabel: step.label },
+        });
+        const denied: OperatorResult = {
+          status: "failure",
+          summary: `RBAC denied: principal "${principalId}" cannot execute operator "${step.operator}"`,
+        };
+        stepResults.set(step.label, denied);
+        this.state.append({ kind: "step_completed", goalId: goal.id, stepLabel: step.label, result: denied });
+        continue;
+      }
+
       // Interpolate task template
       const task = this.interpolateTemplate(step.task, event, stepResults);
 
@@ -193,8 +250,19 @@ export class Mesh {
         },
       };
 
+      const startTime = Date.now();
       const result = await this.executeStepWithRetry(step.operator, ctx, step.retry);
       clearTimeout(timer);
+
+      this.audit.log({
+        principalId,
+        action: "operator.execute",
+        resource: `operator:${step.operator}`,
+        allowed: true,
+        result: result.status === "success" ? "success" : "failure",
+        duration: Date.now() - startTime,
+        details: { goalId: goal.id, stepLabel: step.label },
+      });
 
       stepResults.set(step.label, result);
       this.state.append({

@@ -32,6 +32,10 @@ vi.mock("@modelcontextprotocol/sdk/server/stdio.js", () => ({
 vi.mock("@modelcontextprotocol/sdk/types.js", () => ({
   CallToolRequestSchema: Symbol("CallToolRequestSchema"),
   ListToolsRequestSchema: Symbol("ListToolsRequestSchema"),
+  ListResourcesRequestSchema: Symbol("ListResourcesRequestSchema"),
+  ReadResourceRequestSchema: Symbol("ReadResourceRequestSchema"),
+  ListPromptsRequestSchema: Symbol("ListPromptsRequestSchema"),
+  GetPromptRequestSchema: Symbol("GetPromptRequestSchema"),
 }));
 
 const mockClientListTools = vi.fn();
@@ -72,6 +76,10 @@ import { MeshMCPClient, mcpToolsToOperator } from "./client.js";
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
+  ListResourcesRequestSchema,
+  ReadResourceRequestSchema,
+  ListPromptsRequestSchema,
+  GetPromptRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 
 // ── Helpers ─────────────────────────────────────────────────────────
@@ -121,7 +129,19 @@ function makeMockMesh() {
     },
     goals: {
       list: vi.fn(() => goals),
+      get: vi.fn((id: string) => goals.find((g) => g.id === id) ?? null),
       getState: vi.fn(() => ({ phase: "idle" })),
+    },
+    bus: {
+      getLog: vi.fn(() => [
+        { id: "evt-1", type: "cron.tick", source: "cron", payload: {}, timestamp: "2026-01-01T00:00:00.000Z" },
+      ]),
+    },
+    state: {
+      query: vi.fn(() => [
+        { kind: "match", goalId: "ci-fix", timestamp: "2026-01-01T00:00:00.000Z" },
+      ]),
+      getSeq: vi.fn(() => 42),
     },
     isRunning: vi.fn(() => true),
     createEvent: vi.fn(

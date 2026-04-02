@@ -17,6 +17,7 @@ export interface PluginManifest {
   description?: string;
   permissions?: string[];
   config?: Record<string, unknown>;
+  dependencies?: Record<string, string>; // name → semver range
 }
 
 export interface LoadedPlugin {

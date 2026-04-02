@@ -1,0 +1,51 @@
+🟢 OpenMesh deployed successfully!
+
+{{- if .Values.dashboard.enabled }}
+
+📊 Dashboard:
+{{- if .Values.ingress.enabled }}
+  {{- range .Values.ingress.hosts }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}
+  {{- end }}
+{{- else if contains "NodePort" .Values.service.type }}
+  export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ include "openmesh.fullname" . }})
+  export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
+  echo http://$NODE_IP:$NODE_PORT
+{{- else if contains "LoadBalancer" .Values.service.type }}
+  export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ include "openmesh.fullname" . }} --template "{{"{{ range (index .status.loadBalancer.ingress 0) }}{{.}}{{ end }}"}}")
+  echo http://$SERVICE_IP:{{ .Values.service.port }}
+{{- else }}
+  kubectl port-forward --namespace {{ .Release.Namespace }} svc/{{ include "openmesh.fullname" . }} {{ .Values.service.port }}:{{ .Values.service.port }}
+  Then open: http://localhost:{{ .Values.service.port }}
+{{- end }}
+{{- end }}
+
+{{- if .Values.mcp.enabled }}
+
+🔌 MCP Server:
+  kubectl port-forward --namespace {{ .Release.Namespace }} svc/{{ include "openmesh.fullname" . }} {{ .Values.mcp.port }}:{{ .Values.mcp.port }}
+  Endpoint: http://localhost:{{ .Values.mcp.port }}
+{{- end }}
+
+{{- if .Values.litellm.enabled }}
+
+🤖 LiteLLM proxy running as sidecar on port {{ .Values.litellm.port }}
+{{- end }}
+
+{{- if .Values.otelCollector.enabled }}
+
+📡 OpenTelemetry collector sidecar active on port {{ .Values.otelCollector.port }}
+{{- end }}
+
+⚙️  Next steps:
+  1. Create secrets for your LLM API key:
+     kubectl create secret generic openmesh-llm-key \
+       --namespace {{ .Release.Namespace }} \
+       --from-literal=api-key=<YOUR_OPENAI_API_KEY>
+
+  2. Update your release to reference the secret:
+     helm upgrade {{ .Release.Name }} ./helm/openmesh \
+       --set llm.apiKeySecret=openmesh-llm-key
+
+  3. Add goals by editing the configmap or mounting a PVC:
+     kubectl edit configmap {{ include "openmesh.fullname" . }}-config --namespace {{ .Release.Namespace }}

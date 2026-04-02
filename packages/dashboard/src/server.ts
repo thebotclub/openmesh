@@ -55,6 +55,154 @@ function loadState(dataDir: string, limit = 100): Array<Record<string, unknown>>
   });
 }
 
+// ── Metrics computation ────────────────────────────────────────────
+
+export interface DashboardMetrics {
+  events: {
+    total: number;
+    byType: Record<string, number>;
+    recentRate: number;
+    timeline: Array<{ time: string; count: number }>;
+  };
+  goals: {
+    total: number;
+    active: number;
+    byStatus: Record<string, number>;
+  };
+  operators: {
+    total: number;
+    executions: number;
+    avgDurationMs: number;
+    byOperator: Record<string, { executions: number; avgMs: number; errors: number }>;
+  };
+  system: {
+    uptimeMs: number;
+    memoryMb: number;
+    eventBusSize: number;
+    stateCheckpoints: number;
+  };
+}
+
+const startTime = Date.now();
+
+export function computeMetrics(dataDir: string): DashboardMetrics {
+  const allEvents = loadEvents(dataDir, 100_000);
+  const allCheckpoints = loadState(dataDir, 100_000);
+
+  // ── Events ──
+  const byType: Record<string, number> = {};
+  for (const e of allEvents) {
+    const t = (e.type as string) ?? "unknown";
+    byType[t] = (byType[t] ?? 0) + 1;
+  }
+
+  // Recent rate: events in last 5 minutes
+  const fiveMinAgo = Date.now() - 5 * 60_000;
+  const recentEvents = allEvents.filter(e => {
+    const ts = e.timestamp as string | undefined;
+    return ts ? new Date(ts).getTime() > fiveMinAgo : false;
+  });
+  const recentRate = recentEvents.length / 5; // per minute
+
+  // Timeline: 1-min buckets for last 30 minutes
+  const thirtyMinAgo = Date.now() - 30 * 60_000;
+  const buckets = new Map<string, number>();
+  for (let i = 0; i < 30; i++) {
+    const t = new Date(thirtyMinAgo + i * 60_000);
+    const key = t.toISOString().slice(0, 16); // YYYY-MM-DDTHH:MM
+    buckets.set(key, 0);
+  }
+  for (const e of allEvents) {
+    const ts = e.timestamp as string | undefined;
+    if (!ts) continue;
+    const key = ts.slice(0, 16);
+    if (buckets.has(key)) {
+      buckets.set(key, buckets.get(key)! + 1);
+    }
+  }
+  const timeline = [...buckets.entries()].map(([time, count]) => ({ time, count }));
+
+  // ── Goals ──
+  const goalStatuses: Record<string, number> = {};
+  let activeGoals = 0;
+  const goalStates = new Map<string, string>();
+  for (const c of allCheckpoints) {
+    const kind = c.kind as string | undefined;
+    const goalId = c.goalId as string | undefined;
+    if (!kind || !goalId) continue;
+    if (kind === "goal_matched") {
+      goalStates.set(goalId, "active");
+    } else if (kind === "goal_completed") {
+      const status = (c.result as Record<string, unknown>)?.status as string ?? "success";
+      goalStates.set(goalId, status);
+      goalStatuses[status] = (goalStatuses[status] ?? 0) + 1;
+    } else if (kind === "goal_failed") {
+      goalStates.set(goalId, "failure");
+      goalStatuses["failure"] = (goalStatuses["failure"] ?? 0) + 1;
+    }
+  }
+  for (const st of goalStates.values()) {
+    if (st === "active") activeGoals++;
+  }
+
+  // ── Operators ──
+  const opStats = new Map<string, { executions: number; totalMs: number; errors: number }>();
+  for (const c of allCheckpoints) {
+    const kind = c.kind as string | undefined;
+    if (kind !== "step_completed") continue;
+    const label = (c.stepLabel as string) ?? "unknown";
+    const dur = (c.durationMs as number) ?? 0;
+    const status = (c.result as Record<string, unknown>)?.status as string ?? "success";
+    const entry = opStats.get(label) ?? { executions: 0, totalMs: 0, errors: 0 };
+    entry.executions++;
+    entry.totalMs += dur;
+    if (status === "error" || status === "failure") entry.errors++;
+    opStats.set(label, entry);
+  }
+
+  let totalExec = 0;
+  let totalDur = 0;
+  const byOperator: Record<string, { executions: number; avgMs: number; errors: number }> = {};
+  for (const [op, s] of opStats) {
+    totalExec += s.executions;
+    totalDur += s.totalMs;
+    byOperator[op] = {
+      executions: s.executions,
+      avgMs: s.executions > 0 ? Math.round(s.totalMs / s.executions) : 0,
+      errors: s.errors,
+    };
+  }
+
+  // ── System ──
+  const mem = process.memoryUsage();
+
+  return {
+    events: {
+      total: allEvents.length,
+      byType,
+      recentRate: Math.round(recentRate * 100) / 100,
+      timeline,
+    },
+    goals: {
+      total: goalStates.size,
+      active: activeGoals,
+      byStatus: goalStatuses,
+    },
+    operators: {
+      total: opStats.size,
+      executions: totalExec,
+      avgDurationMs: totalExec > 0 ? Math.round(totalDur / totalExec) : 0,
+      byOperator,
+    },
+    system: {
+      uptimeMs: Date.now() - startTime,
+      memoryMb: Math.round((mem.heapUsed / 1024 / 1024) * 100) / 100,
+      eventBusSize: allEvents.length,
+      stateCheckpoints: allCheckpoints.length,
+    },
+  };
+}
+
 const HTML = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -97,6 +245,23 @@ const HTML = `<!DOCTYPE html>
     .live-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #238636; animation: pulse 2s infinite; margin-right: 6px; }
     @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
     .full-width { grid-column: 1 / -1; }
+    .section-title { font-size: 18px; color: #58a6ff; margin: 32px 0 16px; border-bottom: 1px solid #30363d; padding-bottom: 8px; }
+    .stats-row { display: flex; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
+    .stat-box { flex: 1; min-width: 140px; background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px; text-align: center; }
+    .stat-value { font-size: 28px; font-weight: 700; color: #58a6ff; }
+    .stat-label { font-size: 12px; color: #8b949e; text-transform: uppercase; letter-spacing: 1px; margin-top: 4px; }
+    .bar-chart { margin: 8px 0; }
+    .bar-row { display: flex; align-items: center; margin: 4px 0; font-size: 13px; }
+    .bar-label { width: 120px; color: #8b949e; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; flex-shrink: 0; }
+    .bar-track { flex: 1; background: #21262d; border-radius: 4px; height: 18px; overflow: hidden; position: relative; margin: 0 8px; }
+    .bar-fill { height: 100%; border-radius: 4px; transition: width 0.3s; }
+    .bar-value { width: 50px; text-align: right; color: #c9d1d9; flex-shrink: 0; }
+    .op-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .op-table th { text-align: left; color: #8b949e; font-weight: 600; padding: 8px; border-bottom: 1px solid #30363d; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+    .op-table td { padding: 8px; border-bottom: 1px solid #21262d; }
+    .op-table tr:last-child td { border-bottom: none; }
+    .timeline-chart { display: flex; align-items: flex-end; gap: 2px; height: 60px; margin: 8px 0; }
+    .timeline-bar { flex: 1; background: #1f6feb; border-radius: 2px 2px 0 0; min-width: 4px; transition: height 0.3s; }
     @media (max-width: 768px) { .grid { grid-template-columns: 1fr; } }
   </style>
 </head>
@@ -122,6 +287,40 @@ const HTML = `<!DOCTYPE html>
       <div class="card full-width">
         <h2>Execution Log</h2>
         <div id="checkpoints"><div class="empty">No checkpoints yet</div></div>
+      </div>
+    </div>
+
+    <h3 class="section-title">Metrics</h3>
+    <div class="stats-row" id="system-stats">
+      <div class="stat-box"><div class="stat-value" id="stat-uptime">-</div><div class="stat-label">Uptime</div></div>
+      <div class="stat-box"><div class="stat-value" id="stat-memory">-</div><div class="stat-label">Memory (MB)</div></div>
+      <div class="stat-box"><div class="stat-value" id="stat-events">-</div><div class="stat-label">Total Events</div></div>
+      <div class="stat-box"><div class="stat-value" id="stat-rate">-</div><div class="stat-label">Events/min</div></div>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h2>Event Timeline (30 min)</h2>
+        <div id="event-timeline" class="timeline-chart"><div class="empty">No data</div></div>
+      </div>
+      <div class="card">
+        <h2>Events by Type</h2>
+        <div id="events-by-type" class="bar-chart"><div class="empty">No data</div></div>
+      </div>
+      <div class="card">
+        <h2>Goals by Status</h2>
+        <div id="goals-by-status" class="bar-chart"><div class="empty">No data</div></div>
+      </div>
+      <div class="card">
+        <h2>Goal Summary</h2>
+        <div class="stats-row">
+          <div class="stat-box"><div class="stat-value" id="stat-goals-total">-</div><div class="stat-label">Total</div></div>
+          <div class="stat-box"><div class="stat-value" id="stat-goals-active">-</div><div class="stat-label">Active</div></div>
+        </div>
+      </div>
+      <div class="card full-width">
+        <h2>Operator Execution Stats</h2>
+        <div id="operator-stats"><div class="empty">No operator data</div></div>
       </div>
     </div>
   </div>
@@ -189,6 +388,84 @@ const HTML = `<!DOCTYPE html>
 
     fetchData();
     setInterval(fetchData, 5000);
+
+    async function fetchMetrics() {
+      try {
+        const res = await fetch('/api/metrics');
+        const m = await res.json();
+        renderSystemStats(m.system, m.events);
+        renderTimeline(m.events.timeline);
+        renderEventsByType(m.events.byType, m.events.total);
+        renderGoalsByStatus(m.goals);
+        renderOperatorStats(m.operators);
+      } catch {}
+    }
+
+    function renderSystemStats(sys, events) {
+      const h = Math.floor(sys.uptimeMs / 3600000);
+      const min = Math.floor((sys.uptimeMs % 3600000) / 60000);
+      document.getElementById('stat-uptime').textContent = h + 'h ' + min + 'm';
+      document.getElementById('stat-memory').textContent = sys.memoryMb;
+      document.getElementById('stat-events').textContent = events.total;
+      document.getElementById('stat-rate').textContent = events.recentRate;
+    }
+
+    function renderTimeline(timeline) {
+      const el = document.getElementById('event-timeline');
+      if (!timeline.length) { el.innerHTML = '<div class="empty">No data</div>'; return; }
+      const max = Math.max(...timeline.map(t => t.count), 1);
+      el.innerHTML = timeline.map(t => {
+        const pct = Math.max((t.count / max) * 100, 2);
+        return '<div class="timeline-bar" style="height:' + pct + '%" title="' + t.time + ': ' + t.count + '"></div>';
+      }).join('');
+    }
+
+    function renderEventsByType(byType, total) {
+      const el = document.getElementById('events-by-type');
+      const entries = Object.entries(byType).sort((a, b) => b[1] - a[1]);
+      if (!entries.length) { el.innerHTML = '<div class="empty">No events</div>'; return; }
+      const max = Math.max(...entries.map(e => e[1]), 1);
+      el.innerHTML = entries.slice(0, 10).map(([type, count]) => {
+        const pct = (count / max) * 100;
+        return '<div class="bar-row">' +
+          '<span class="bar-label">' + type + '</span>' +
+          '<div class="bar-track"><div class="bar-fill" style="width:' + pct + '%;background:#1f6feb"></div></div>' +
+          '<span class="bar-value">' + count + '</span></div>';
+      }).join('');
+    }
+
+    function renderGoalsByStatus(goals) {
+      const el = document.getElementById('goals-by-status');
+      document.getElementById('stat-goals-total').textContent = goals.total;
+      document.getElementById('stat-goals-active').textContent = goals.active;
+      const entries = Object.entries(goals.byStatus);
+      if (!entries.length) { el.innerHTML = '<div class="empty">No goals completed</div>'; return; }
+      const max = Math.max(...entries.map(e => e[1]), 1);
+      const colors = { success: '#238636', failure: '#da3634', timeout: '#d29922' };
+      el.innerHTML = entries.map(([status, count]) => {
+        const pct = (count / max) * 100;
+        const color = colors[status] || '#484f58';
+        return '<div class="bar-row">' +
+          '<span class="bar-label">' + status + '</span>' +
+          '<div class="bar-track"><div class="bar-fill" style="width:' + pct + '%;background:' + color + '"></div></div>' +
+          '<span class="bar-value">' + count + '</span></div>';
+      }).join('');
+    }
+
+    function renderOperatorStats(ops) {
+      const el = document.getElementById('operator-stats');
+      const entries = Object.entries(ops.byOperator);
+      if (!entries.length) { el.innerHTML = '<div class="empty">No operator data</div>'; return; }
+      el.innerHTML = '<table class="op-table"><thead><tr>' +
+        '<th>Operator</th><th>Executions</th><th>Avg (ms)</th><th>Errors</th></tr></thead><tbody>' +
+        entries.map(([name, s]) =>
+          '<tr><td style="color:#d2a8ff">' + name + '</td><td>' + s.executions + '</td><td>' + s.avgMs + '</td>' +
+          '<td style="color:' + (s.errors > 0 ? '#f85149' : '#484f58') + '">' + s.errors + '</td></tr>'
+        ).join('') + '</tbody></table>';
+    }
+
+    fetchMetrics();
+    setInterval(fetchMetrics, 5000);
   </script>
 </body>
 </html>`;
@@ -222,6 +499,13 @@ export function startDashboard(config: DashboardConfig = {}): { close: () => voi
       const checkpoints = loadState(dataDir);
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ goals, events, checkpoints }));
+      return;
+    }
+
+    if (url === "/api/metrics") {
+      const metrics = computeMetrics(dataDir);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(metrics));
       return;
     }
 
@@ -260,8 +544,14 @@ export function startDashboard(config: DashboardConfig = {}): { close: () => voi
     }
   }, 1000);
 
+  const actualPort = (): number => {
+    const addr = server.address();
+    if (typeof addr === "object" && addr) return addr.port;
+    return port;
+  };
+
   return {
-    port,
+    get port() { return actualPort(); },
     close: () => {
       clearInterval(pollInterval);
       for (const client of sseClients) client.end();

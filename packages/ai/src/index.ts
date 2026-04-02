@@ -23,3 +23,9 @@ export { AnomalyDetector, type Anomaly } from "./anomalyDetector.js";
 export { AIOperator } from "./aiOperator.js";
 export { RAGContextBuilder, buildMeshContext, type RAGContextConfig, type RAGSource } from "./ragContext.js";
 export { RefineSession, type RefineSessionConfig } from "./refineSession.js";
+export {
+  PromptTemplateRegistry,
+  type PromptTemplate,
+  type PromptDomain,
+  type PromptType,
+} from "./promptTemplates.js";

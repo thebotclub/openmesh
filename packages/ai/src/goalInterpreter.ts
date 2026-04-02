@@ -11,6 +11,7 @@
 
 import type { Goal } from "@openmesh/core";
 import { AIEngine } from "./engine.js";
+import { PromptTemplateRegistry } from "./promptTemplates.js";
 
 export interface InterpretedGoal {
   /** The structured goal */
@@ -21,42 +22,14 @@ export interface InterpretedGoal {
   confidence: number;
 }
 
-const SYSTEM_PROMPT = `You are the OpenMesh Goal Interpreter. Your job is to convert natural language
-operational requests into structured Goal definitions that the OpenMesh runtime can execute.
 
-Available operators:
-- "code": Analyzes code, searches repos, runs tests, generates diffs
-- "comms": Sends notifications via configured channels (Slack, email, etc.)
-- "infra": Executes infrastructure commands (with approval gates for destructive ops)
-- "data": Reads files, runs queries, computes statistics
-- "ai": Uses LLM to reason about problems, generate solutions, summarize findings
-
-Available event types (from observers):
-- cron.tick — periodic timer
-- github.ci.failed, github.ci.passed — CI build results
-- github.pr.opened, github.pr.merged — pull request events
-- github.push — code pushes
-- github.issue.opened — new issues
-- http.health.down, http.health.up, http.health.degraded, http.health.latency-spike — health checks
-- log.error, log.warn, log.anomaly — log pattern matches
-- slack.message, slack.mention — Slack messages
-- channel.message — messages from any channel adapter
-- webhook.* — custom webhook events
-
-Step templates can use:
-- {{event.type}}, {{event.source}}, {{event.timestamp}}
-- {{event.payload.<field>}}
-- {{steps.<label>.status}}, {{steps.<label>.summary}}, {{steps.<label>.data.<key>}}
-
-Respond with a JSON object:
-{
-  "goal": { id, description, observe: [{ type, where? }], then: [{ label, operator, task, when?, channel?, to? }], escalate?, dedupWindowMs? },
-  "explanation": "what this goal does in plain English",
-  "confidence": 0.0-1.0
-}`;
 
 export class GoalInterpreter {
-  constructor(private ai: AIEngine) {}
+  private registry: PromptTemplateRegistry;
+
+  constructor(private ai: AIEngine, registry?: PromptTemplateRegistry) {
+    this.registry = registry ?? new PromptTemplateRegistry();
+  }
 
   /**
    * Interpret a natural language request into a structured Goal.
@@ -73,6 +46,9 @@ export class GoalInterpreter {
     naturalLanguage: string,
     context?: { existingGoals?: string[]; existingOperators?: string[]; ragContext?: string },
   ): Promise<InterpretedGoal> {
+    const domain = this.registry.detectDomain(naturalLanguage);
+    const template = this.registry.getWithFallback(domain, "interpret");
+
     const contextAddendum = context
       ? `\n\nExisting goals: ${context.existingGoals?.join(", ") ?? "none"}\nAvailable operators: ${context.existingOperators?.join(", ") ?? "code, comms, infra, data, ai"}`
       : "";
@@ -81,9 +57,13 @@ export class GoalInterpreter {
       ? `\n\n## Recent Context\n${context.ragContext}`
       : "";
 
+    const systemPrompt = template.systemPrompt + contextAddendum + ragAddendum;
+    const userPrompt = this.registry.render(template, { description: naturalLanguage });
+
     const result = await this.ai.promptJSON<InterpretedGoal>(
-      SYSTEM_PROMPT + contextAddendum + ragAddendum,
-      naturalLanguage,
+      systemPrompt,
+      userPrompt,
+      { temperature: template.temperature },
     );
 
     // Validate required fields
@@ -102,10 +82,19 @@ export class GoalInterpreter {
     feedback: string,
     options?: { ragContext?: string },
   ): Promise<InterpretedGoal> {
+    const domain = this.registry.detectDomain(currentGoal.description ?? "");
+    const template = this.registry.getWithFallback(domain, "refine");
     const ragAddendum = options?.ragContext
       ? `\n\n## Recent Context\n${options.ragContext}`
       : "";
-    const prompt = `Current goal:\n${JSON.stringify(currentGoal, null, 2)}\n\nUser feedback:\n${feedback}\n\nRefine the goal based on the feedback.`;
-    return this.ai.promptJSON<InterpretedGoal>(SYSTEM_PROMPT + ragAddendum, prompt);
+    const prompt = this.registry.render(template, {
+      currentGoal: JSON.stringify(currentGoal, null, 2),
+      feedback,
+    });
+    return this.ai.promptJSON<InterpretedGoal>(
+      template.systemPrompt + ragAddendum,
+      prompt,
+      { temperature: template.temperature },
+    );
   }
 }

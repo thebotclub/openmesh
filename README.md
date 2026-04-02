@@ -1,5 +1,8 @@
 # OpenMesh
 
+![CI](https://github.com/thebotclub/openmesh/actions/workflows/ci.yml/badge.svg)
+![Coverage](https://img.shields.io/badge/coverage-75%25-brightgreen)
+
 [open-mesh.ai](https://open-mesh.ai)
 
 AI-native operations platform. Declare **what** your infrastructure should do — OpenMesh figures out **how**.

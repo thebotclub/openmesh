@@ -14,6 +14,7 @@
 import type { ObservationEvent, Operator, OperatorResult } from "@openmesh/core";
 import type { Goal } from "@openmesh/core";
 import { AIEngine } from "./engine.js";
+import { PromptTemplateRegistry } from "./promptTemplates.js";
 
 export interface PlannedStep {
   label: string;
@@ -31,29 +32,14 @@ export interface ExecutionPlan {
   estimatedTotalMs: number;
 }
 
-const PLANNER_SYSTEM = `You are the OpenMesh Execution Planner. Given an event that triggered a goal,
-and the list of available operators, generate an optimized execution plan.
 
-You may:
-- Reorder steps for efficiency
-- Add investigation steps before action steps
-- Add verification steps after action steps
-- Split complex tasks into smaller sub-tasks
-- Skip steps that don't apply to the specific event
-
-Each step must use one of the available operators. Your plan should be practical,
-safe (investigate before acting), and complete.
-
-Respond with JSON:
-{
-  "goalId": "string",
-  "steps": [{ "label": "string", "operator": "string", "task": "string", "reasoning": "string", "when": "optional condition", "estimatedDurationMs": number }],
-  "reasoning": "why this plan is optimal",
-  "estimatedTotalMs": number
-}`;
 
 export class OperatorPlanner {
-  constructor(private ai: AIEngine) {}
+  private registry: PromptTemplateRegistry;
+
+  constructor(private ai: AIEngine, registry?: PromptTemplateRegistry) {
+    this.registry = registry ?? new PromptTemplateRegistry();
+  }
 
   /**
    * Generate an execution plan for a matched goal + event.
@@ -95,11 +81,18 @@ ${recentContext}
 
 Generate the best execution plan.`;
 
+    const domain = this.registry.detectDomain(goal.description ?? "");
+    const template = this.registry.getWithFallback(domain, "plan");
+
     const ragAddendum = options?.ragContext
       ? `\n\n## Recent Context\n${options.ragContext}`
       : "";
 
-    return this.ai.promptJSON<ExecutionPlan>(PLANNER_SYSTEM + ragAddendum, prompt);
+    return this.ai.promptJSON<ExecutionPlan>(
+      template.systemPrompt + ragAddendum,
+      prompt,
+      { temperature: template.temperature },
+    );
   }
 
   /**
@@ -137,10 +130,17 @@ ${operatorDescriptions}
 Generate a recovery plan. You may retry the failed step with changes,
 try alternative approaches, or escalate if recovery isn't possible.`;
 
+    const domain = this.registry.detectDomain(goal.description ?? "");
+    const template = this.registry.getWithFallback(domain, "plan");
+
     const ragAddendum = options?.ragContext
       ? `\n\n## Recent Context\n${options.ragContext}`
       : "";
 
-    return this.ai.promptJSON<ExecutionPlan>(PLANNER_SYSTEM + ragAddendum, prompt);
+    return this.ai.promptJSON<ExecutionPlan>(
+      template.systemPrompt + ragAddendum,
+      prompt,
+      { temperature: template.temperature },
+    );
   }
 }

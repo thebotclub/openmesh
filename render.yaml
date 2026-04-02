@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: openmesh
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: OPENMESH_LLM_BASE_URL
+        sync: false
+      - key: OPENMESH_LLM_API_KEY
+        sync: false
+    healthCheckPath: /

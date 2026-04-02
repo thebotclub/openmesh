@@ -14,7 +14,8 @@
     "./coordinators": "./dist/coordinators/index.js",
     "./state": "./dist/state/index.js",
     "./permissions": "./dist/permissions/index.js",
-    "./providers": "./dist/providers/index.js"
+    "./providers": "./dist/providers/index.js",
+    "./secrets": "./dist/secrets/index.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

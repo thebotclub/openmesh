@@ -21,3 +21,14 @@
 
 export { PluginLoader, type PluginManifest, type LoadedPlugin } from "./loader.js";
 export { PluginRegistry } from "./registry.js";
+export {
+  DependencyResolver,
+  satisfies,
+  type PluginDependency,
+  type ResolvedPlugin,
+} from "./resolver.js";
+export {
+  PluginMarketplace,
+  type MarketplaceEntry,
+  type MarketplaceConfig,
+} from "./marketplace.js";

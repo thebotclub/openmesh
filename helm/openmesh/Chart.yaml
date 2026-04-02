@@ -1,0 +1,14 @@
+apiVersion: v2
+name: openmesh
+description: AI-native operations platform — declare what, AI figures out how
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - ai
+  - operations
+  - automation
+  - mcp
+maintainers:
+  - name: OpenMesh
+    url: https://open-mesh.ai

@@ -1,0 +1,234 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "openmesh.fullname" . }}
+  labels:
+    {{- include "openmesh.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "openmesh.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "openmesh.selectorLabels" . | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "openmesh.serviceAccountName" . }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        # ── Main OpenMesh container ───────────────────────────────
+        - name: mesh
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["node", "packages/cli/dist/main.js"]
+          args: ["start"]
+          ports:
+            {{- if .Values.dashboard.enabled }}
+            - name: dashboard
+              containerPort: {{ .Values.dashboard.port }}
+              protocol: TCP
+            {{- end }}
+            {{- if .Values.mcp.enabled }}
+            - name: mcp
+              containerPort: {{ .Values.mcp.port }}
+              protocol: TCP
+            {{- end }}
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: LOG_LEVEL
+              value: {{ .Values.mesh.logLevel | quote }}
+            - name: LITELLM_URL
+              value: {{ include "openmesh.litellmUrl" . | quote }}
+            - name: LLM_MODEL
+              value: {{ .Values.llm.model | quote }}
+            - name: MESH_GOALS_DIR
+              value: {{ .Values.mesh.goalsDir | quote }}
+            - name: MESH_DATA_DIR
+              value: {{ .Values.mesh.dataDir | quote }}
+            {{- if .Values.mesh.ai }}
+            - name: MESH_AI
+              value: "true"
+            {{- end }}
+            {{- if .Values.mesh.telemetry }}
+            - name: MESH_TELEMETRY
+              value: "true"
+            {{- end }}
+            {{- if .Values.otelCollector.enabled }}
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ include "openmesh.otelEndpoint" . | quote }}
+            {{- end }}
+            # ── LLM API key ──
+            {{- if .Values.llm.apiKeySecret }}
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.llm.apiKeySecret }}
+                  key: {{ .Values.llm.apiKeySecretKey }}
+            {{- end }}
+            # ── Dashboard API key ──
+            {{- if .Values.dashboard.apiKeySecret }}
+            - name: DASHBOARD_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.dashboard.apiKeySecret }}
+                  key: {{ .Values.dashboard.apiKeySecretKey }}
+            {{- end }}
+            # ── Channel secrets ──
+            {{- if .Values.channels.slack.enabled }}
+            {{- if .Values.channels.slack.webhookUrlSecret }}
+            - name: SLACK_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.channels.slack.webhookUrlSecret }}
+                  key: {{ .Values.channels.slack.webhookUrlSecretKey }}
+            {{- end }}
+            {{- end }}
+            {{- if .Values.channels.discord.enabled }}
+            {{- if .Values.channels.discord.webhookUrlSecret }}
+            - name: DISCORD_WEBHOOK_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.channels.discord.webhookUrlSecret }}
+                  key: {{ .Values.channels.discord.webhookUrlSecretKey }}
+            {{- end }}
+            {{- end }}
+            {{- if .Values.channels.telegram.enabled }}
+            {{- if .Values.channels.telegram.botTokenSecret }}
+            - name: TELEGRAM_BOT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.channels.telegram.botTokenSecret }}
+                  key: {{ .Values.channels.telegram.botTokenSecretKey }}
+            {{- end }}
+            {{- if .Values.channels.telegram.chatId }}
+            - name: TELEGRAM_CHAT_ID
+              value: {{ .Values.channels.telegram.chatId | quote }}
+            {{- end }}
+            {{- end }}
+          volumeMounts:
+            - name: data
+              mountPath: {{ .Values.mesh.dataDir }}
+            - name: config
+              mountPath: {{ .Values.mesh.goalsDir }}
+              readOnly: true
+          {{- if .Values.dashboard.enabled }}
+          livenessProbe:
+            httpGet:
+              path: /
+              port: dashboard
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /
+              port: dashboard
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+
+        # ── LiteLLM sidecar ───────────────────────────────────────
+        {{- if .Values.litellm.enabled }}
+        - name: litellm
+          image: "{{ .Values.litellm.image.repository }}:{{ .Values.litellm.image.tag }}"
+          imagePullPolicy: {{ .Values.litellm.image.pullPolicy }}
+          args: ["--config", "/etc/litellm/config.yaml"]
+          ports:
+            - name: litellm
+              containerPort: {{ .Values.litellm.port }}
+              protocol: TCP
+          env:
+            {{- if .Values.llm.apiKeySecret }}
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.llm.apiKeySecret }}
+                  key: {{ .Values.llm.apiKeySecretKey }}
+            {{- end }}
+          volumeMounts:
+            - name: litellm-config
+              mountPath: /etc/litellm
+              readOnly: true
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: litellm
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: litellm
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.litellm.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+        {{- end }}
+
+        # ── OpenTelemetry collector sidecar ───────────────────────
+        {{- if .Values.otelCollector.enabled }}
+        - name: otel-collector
+          image: "{{ .Values.otelCollector.image.repository }}:{{ .Values.otelCollector.image.tag }}"
+          ports:
+            - name: otlp-http
+              containerPort: {{ .Values.otelCollector.port }}
+              protocol: TCP
+          resources:
+            {{- toYaml .Values.otelCollector.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+        {{- end }}
+
+      volumes:
+        - name: data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "openmesh.fullname" . }}-data
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: config
+          configMap:
+            name: {{ include "openmesh.fullname" . }}-config
+        {{- if .Values.litellm.enabled }}
+        - name: litellm-config
+          configMap:
+            name: {{ include "openmesh.fullname" . }}-litellm
+        {{- end }}
