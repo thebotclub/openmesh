@@ -13,9 +13,11 @@
 import { MeterProvider } from "@opentelemetry/sdk-metrics";
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import type { Counter, Histogram, UpDownCounter } from "@opentelemetry/api";
+import { MetricsRegistry } from "./prometheusExporter.js";
 
 export class MeshMetrics {
   private provider: MeterProvider;
+  private readonly registry = new MetricsRegistry();
 
   /** Total events processed */
   readonly eventsTotal: Counter;
@@ -69,10 +71,22 @@ export class MeshMetrics {
 
   recordEvent(eventType: string): void {
     this.eventsTotal.add(1, { "event.type": eventType });
+    this.registry.incCounter(
+      "mesh_events_total",
+      { event_type: eventType },
+      1,
+      "Total events processed by the mesh",
+    );
   }
 
   recordGoalExecution(goalId: string, status: "success" | "failure"): void {
     this.goalExecutions.add(1, { "goal.id": goalId, status });
+    this.registry.incCounter(
+      "mesh_goals_executions_total",
+      { goal_id: goalId, status },
+      1,
+      "Goal executions by status",
+    );
   }
 
   recordOperatorDuration(operatorId: string, durationMs: number, status: string): void {
@@ -80,14 +94,37 @@ export class MeshMetrics {
       "operator.id": operatorId,
       status,
     });
+    this.registry.observeHistogram(
+      "mesh_operator_duration_ms",
+      { operator_id: operatorId, status },
+      durationMs,
+      "Operator execution duration in milliseconds",
+    );
   }
 
   recordAnomaly(type: string, severity: string): void {
     this.anomaliesDetected.add(1, { type, severity });
+    this.registry.incCounter(
+      "mesh_anomalies_detected_total",
+      { type, severity },
+      1,
+      "Anomalies detected by the AI detector",
+    );
   }
 
   recordChannelMessage(channelId: string, direction: "inbound" | "outbound"): void {
     this.channelMessages.add(1, { "channel.id": channelId, direction });
+    this.registry.incCounter(
+      "mesh_channels_messages_total",
+      { channel_id: channelId, direction },
+      1,
+      "Channel messages sent and received",
+    );
+  }
+
+  /** Return all tracked metrics in Prometheus exposition format. */
+  serializePrometheus(): string {
+    return this.registry.serialize();
   }
 
   async shutdown(): Promise<void> {

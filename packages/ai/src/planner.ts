@@ -67,6 +67,7 @@ export class OperatorPlanner {
     event: ObservationEvent,
     availableOperators: Operator[],
     recentResults?: Map<string, OperatorResult>,
+    options?: { ragContext?: string },
   ): Promise<ExecutionPlan> {
     const operatorDescriptions = availableOperators
       .map((op) => `- "${op.id}": ${op.description}`)
@@ -94,7 +95,11 @@ ${recentContext}
 
 Generate the best execution plan.`;
 
-    return this.ai.promptJSON<ExecutionPlan>(PLANNER_SYSTEM, prompt);
+    const ragAddendum = options?.ragContext
+      ? `\n\n## Recent Context\n${options.ragContext}`
+      : "";
+
+    return this.ai.promptJSON<ExecutionPlan>(PLANNER_SYSTEM + ragAddendum, prompt);
   }
 
   /**
@@ -107,6 +112,7 @@ Generate the best execution plan.`;
     failureReason: string,
     availableOperators: Operator[],
     completedResults: Map<string, OperatorResult>,
+    options?: { ragContext?: string },
   ): Promise<ExecutionPlan> {
     const operatorDescriptions = availableOperators
       .map((op) => `- "${op.id}": ${op.description}`)
@@ -131,6 +137,10 @@ ${operatorDescriptions}
 Generate a recovery plan. You may retry the failed step with changes,
 try alternative approaches, or escalate if recovery isn't possible.`;
 
-    return this.ai.promptJSON<ExecutionPlan>(PLANNER_SYSTEM, prompt);
+    const ragAddendum = options?.ragContext
+      ? `\n\n## Recent Context\n${options.ragContext}`
+      : "";
+
+    return this.ai.promptJSON<ExecutionPlan>(PLANNER_SYSTEM + ragAddendum, prompt);
   }
 }

@@ -18,3 +18,8 @@ export { MeshTelemetry, type TelemetryConfig } from "./telemetry.js";
 export { createLogger, type MeshPinoLogger } from "./logger.js";
 export { MeshTracer } from "./tracer.js";
 export { MeshMetrics } from "./metrics.js";
+export {
+  PrometheusMetricsServer,
+  MetricsRegistry,
+  type PrometheusExporterConfig,
+} from "./prometheusExporter.js";

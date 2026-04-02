@@ -1,11 +1,14 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { readFileSync, existsSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { validateRequest, type AuthConfig } from "./auth.js";
 
 export interface DashboardConfig {
   port?: number;
   dataDir?: string;
   goalsDir?: string;
+  /** API keys for dashboard authentication. If empty/undefined, auth is disabled. */
+  apiKeys?: string[];
 }
 
 /** Parse goals from YAML dir (reuse loader from core if available) */
@@ -195,9 +198,16 @@ export function startDashboard(config: DashboardConfig = {}): { close: () => voi
   const dataDir = resolve(config.dataDir ?? ".openmesh");
   const goalsDir = resolve(config.goalsDir ?? "goals");
 
+  const authConfig: AuthConfig = { apiKeys: config.apiKeys };
   const sseClients = new Set<ServerResponse>();
 
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
+    if (!validateRequest(req, authConfig)) {
+      res.writeHead(401, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "Unauthorized" }));
+      return;
+    }
+
     const url = req.url ?? "/";
 
     if (url === "/" || url === "/index.html") {

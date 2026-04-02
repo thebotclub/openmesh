@@ -71,14 +71,18 @@ export class GoalInterpreter {
    */
   async interpret(
     naturalLanguage: string,
-    context?: { existingGoals?: string[]; existingOperators?: string[] },
+    context?: { existingGoals?: string[]; existingOperators?: string[]; ragContext?: string },
   ): Promise<InterpretedGoal> {
     const contextAddendum = context
       ? `\n\nExisting goals: ${context.existingGoals?.join(", ") ?? "none"}\nAvailable operators: ${context.existingOperators?.join(", ") ?? "code, comms, infra, data, ai"}`
       : "";
 
+    const ragAddendum = context?.ragContext
+      ? `\n\n## Recent Context\n${context.ragContext}`
+      : "";
+
     const result = await this.ai.promptJSON<InterpretedGoal>(
-      SYSTEM_PROMPT + contextAddendum,
+      SYSTEM_PROMPT + contextAddendum + ragAddendum,
       naturalLanguage,
     );
 
@@ -96,8 +100,12 @@ export class GoalInterpreter {
   async refine(
     currentGoal: Goal,
     feedback: string,
+    options?: { ragContext?: string },
   ): Promise<InterpretedGoal> {
+    const ragAddendum = options?.ragContext
+      ? `\n\n## Recent Context\n${options.ragContext}`
+      : "";
     const prompt = `Current goal:\n${JSON.stringify(currentGoal, null, 2)}\n\nUser feedback:\n${feedback}\n\nRefine the goal based on the feedback.`;
-    return this.ai.promptJSON<InterpretedGoal>(SYSTEM_PROMPT, prompt);
+    return this.ai.promptJSON<InterpretedGoal>(SYSTEM_PROMPT + ragAddendum, prompt);
   }
 }

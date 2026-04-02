@@ -19,3 +19,4 @@
 
 export { MeshMCPServer, type MCPServerConfig } from "./server.js";
 export { MeshMCPClient, type MCPClientConfig, mcpToolsToOperator } from "./client.js";
+export { MCPHttpTransport, type MCPHttpTransportConfig } from "./httpTransport.js";

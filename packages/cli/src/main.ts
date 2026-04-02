@@ -475,6 +475,83 @@ ai.command("analyze")
     }
   });
 
+ai.command("refine")
+  .description("Interactively create and refine a goal via AI conversation")
+  .option("--model <model>", "LLM model to use")
+  .option("--save", "Save the generated goal to the goals directory", false)
+  .option("-g, --goals <dir>", "Goals directory", "goals")
+  .action(async (opts: { model?: string; save: boolean; goals: string }) => {
+    try {
+      const { RefineSession } = await import("@openmesh/ai/refineSession");
+      const readline = await import("node:readline");
+
+      const session = new RefineSession(opts.model ? { model: opts.model } : undefined);
+
+      const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+      const ask = (q: string): Promise<string> =>
+        new Promise((res) => rl.question(q, (answer) => res(answer)));
+
+      console.log("\n🧠 OpenMesh Goal Refiner");
+      console.log("========================");
+      console.log("Describe what you want your mesh to do in plain English.");
+      console.log("I'll generate a structured goal, then you can refine it iteratively.\n");
+
+      const description = await ask("Goal description: ");
+      if (!description.trim()) {
+        console.log("No description provided. Exiting.");
+        rl.close();
+        return;
+      }
+
+      console.log("\n⏳ Interpreting...\n");
+      const initial = await session.start(description);
+
+      console.log(`📋 Interpreted Goal (confidence: ${(initial.confidence * 100).toFixed(0)}%)`);
+      console.log(`   ${initial.explanation}\n`);
+      console.log("---");
+      console.log(session.toYaml());
+      console.log("---\n");
+
+      // Refinement loop
+      while (true) {
+        const feedback = await ask("Feedback (or 'done' to save, 'quit' to exit): ");
+        const trimmed = feedback.trim().toLowerCase();
+
+        if (trimmed === "quit") {
+          console.log("Exiting without saving.");
+          break;
+        }
+
+        if (trimmed === "done") {
+          const goalsDir = resolve(opts.goals);
+          if (!existsSync(goalsDir)) mkdirSync(goalsDir, { recursive: true });
+          const goal = session.getCurrentGoal()!;
+          const filePath = join(goalsDir, `${goal.id}.yaml`);
+          writeFileSync(filePath, session.toYaml() + "\n");
+          console.log(`\n✅ Goal saved to ${filePath}`);
+          break;
+        }
+
+        if (!trimmed) continue;
+
+        console.log("\n⏳ Refining...\n");
+        const refined = await session.refine(feedback);
+
+        console.log(`📋 Refined Goal (confidence: ${(refined.confidence * 100).toFixed(0)}%)`);
+        console.log(`   ${refined.explanation}\n`);
+        console.log("---");
+        console.log(session.toYaml());
+        console.log("---\n");
+      }
+
+      rl.close();
+    } catch (err) {
+      console.error("AI module not available. Install @openmesh/ai and configure LLM endpoint.");
+      console.error((err as Error).message);
+      process.exit(1);
+    }
+  });
+
 // ── mesh mcp ────────────────────────────────────────────────────────
 
 const mcp = program.command("mcp").description("Model Context Protocol integration");

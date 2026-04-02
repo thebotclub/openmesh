@@ -29,6 +29,14 @@
     "./aiOperator": {
       "types": "./dist/aiOperator.d.ts",
       "import": "./dist/aiOperator.js"
+    },
+    "./ragContext": {
+      "types": "./dist/ragContext.d.ts",
+      "import": "./dist/ragContext.js"
+    },
+    "./refineSession": {
+      "types": "./dist/refineSession.d.ts",
+      "import": "./dist/refineSession.js"
     }
   },
   "scripts": {
