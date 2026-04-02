@@ -1,0 +1,18 @@
+id: service-health
+description: Monitor service health on cron schedule
+
+observe:
+  - type: "cron.tick"
+
+then:
+  - label: check-stats
+    operator: data
+    task: "Collect service stats for health monitoring"
+  - label: send-health-report
+    operator: comms
+    task: "Health check report: send service status summary"
+
+escalate:
+  afterFailures: 3
+  channel: slack
+  to: "#oncall"

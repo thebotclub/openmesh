@@ -1,0 +1,18 @@
+id: code-quality
+description: Scan code quality on push events
+
+observe:
+  - type: "github.push"
+
+then:
+  - label: scan-code
+    operator: code
+    task: "Scan for TODO items and code quality issues in {{event.payload.ref}}"
+  - label: notify-results
+    operator: comms
+    task: "Code scan complete: report quality findings for {{event.payload.repo}}"
+
+escalate:
+  afterFailures: 3
+  channel: slack
+  to: "#dev-alerts"

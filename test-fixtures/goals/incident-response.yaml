@@ -1,0 +1,23 @@
+id: incident-response
+description: Respond to application errors with chained investigation
+
+observe:
+  - type: "log.error"
+
+then:
+  - label: collect-context
+    operator: data
+    task: "Collect context and logs around error: {{event.payload.message}}"
+  - label: analyze
+    operator: code
+    task: "Analyze root cause based on {{steps.collect-context.summary}}"
+    when: "collect-context.status == 'success'"
+  - label: notify-oncall
+    operator: comms
+    task: "INCIDENT: Notify on-call team about {{event.payload.message}}"
+    when: "analyze.status == 'success'"
+
+escalate:
+  afterFailures: 3
+  channel: slack
+  to: "#oncall"
