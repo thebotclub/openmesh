@@ -7,6 +7,8 @@
 
 AI-native operations platform. Declare **what** your infrastructure should do — OpenMesh figures out **how**.
 
+> **📖 Full User Guide:** [docs/OpenMesh-User-Guide.md](docs/OpenMesh-User-Guide.md) (also available as [PDF](docs/OpenMesh-User-Guide.pdf))
+
 ## Architecture
 
 ```
@@ -50,23 +52,25 @@ pnpm install
 pnpm build
 
 # Initialize a project
-node packages/cli/dist/main.js init
+mesh init
 
 # Run the mesh (cron observer fires immediately)
-node packages/cli/dist/main.js run
+mesh run
 
 # Run with AI, channels, and telemetry
-node packages/cli/dist/main.js run --ai --channels --telemetry
+mesh run --ai --channels --telemetry
 
 # Inject a test event manually
-node packages/cli/dist/main.js inject cron.tick
+mesh inject cron.tick
 
 # Check status
-node packages/cli/dist/main.js status
+mesh status
 
 # View event log
-node packages/cli/dist/main.js logs
+mesh logs
 ```
+
+> `mesh` is available after `pnpm build` via the `@openmesh/cli` bin. You can also use `npx @openmesh/cli`.
 
 ## Writing Goals
 
@@ -180,7 +184,7 @@ escalate:
 Launch the web dashboard alongside the mesh:
 
 ```bash
-node packages/cli/dist/main.js run --dashboard --dashboard-port 3777
+mesh run --dashboard --dashboard-port 3777
 ```
 
 The dashboard shows:
@@ -285,6 +289,29 @@ mesh run --telemetry
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 ```
 
+### Secrets & Security
+
+Pluggable secrets manager with 5 backends (env vars, file, HashiCorp Vault, AWS Secrets Manager, 1Password):
+
+```typescript
+import { Mesh } from '@openmesh/core';
+const mesh = new Mesh({
+  secrets: {
+    backends: ['env', { type: 'file', path: './secrets.json' }],
+  },
+});
+// Use ${SECRET:key} in configs — resolved automatically
+```
+
+Scoped RBAC with 3 built-in roles (`admin`, `operator`, `viewer`) and glob-pattern resource matching. JSONL audit log with rotation and retention for all operator actions.
+
+### Deploy
+
+One-click deploy templates included:
+- **Docker**: `docker compose up` (mesh + LiteLLM + OpenTelemetry)
+- **Kubernetes**: Full Helm chart at `helm/openmesh/`
+- **Railway / Fly.io / Render**: Config files in repo root
+
 ### Open Source Leverage
 
 OpenMesh doesn't reinvent the wheel. We integrate with best-in-class open source:
@@ -308,14 +335,14 @@ State is restored on restart, so the mesh can pick up where it left off.
 ## Development
 
 ```bash
-# Tests (75 passing across 10 files)
+# Tests (544 passing across 32 files)
 npx vitest run
 
-# Build all packages
+# Build all 18 packages
 pnpm build
 
 # Run CLI in development
-node packages/cli/dist/main.js --help
+mesh --help
 ```
 
 ## License
